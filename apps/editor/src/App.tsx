@@ -12,6 +12,7 @@ import {
   Sun,
 } from 'lucide-react'
 import { FileTree } from './components/FileTree'
+import { SourceEditor } from './components/SourceEditor'
 import { Dialog } from './components/Dialog'
 import { TiptapMarkdownEditor } from './editor/components/markdown/TiptapMarkdownEditor'
 import { PlatformProvider } from './editor/context/PlatformContext'
@@ -459,49 +460,6 @@ function ToolbarButton({
     >
       {children}
     </button>
-  )
-}
-
-/**
- * Raw markdown source editor (plain textarea).
- * Cmd/Ctrl+S and Cmd/Ctrl+E shortcuts work here too.
- */
-function SourceEditor({
-  value,
-  onChange,
-  onTabIntoWysiwyg,
-}: {
-  value: string
-  onChange: (md: string) => void
-  onTabIntoWysiwyg: () => void
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault()
-          const el = e.currentTarget
-          const { selectionStart, selectionEnd, value: v } = el
-          const next = `${v.slice(0, selectionStart)}  ${v.slice(selectionEnd)}`
-          el.value = next
-          el.setSelectionRange(selectionStart + 2, selectionStart + 2)
-          onChange(next)
-          return
-        }
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
-          e.preventDefault()
-          onTabIntoWysiwyg()
-        }
-      }}
-      spellCheck={false}
-      className="w-full min-h-[70vh] resize-none outline-none bg-transparent font-mono text-[13.5px] leading-[1.6] text-foreground/90 caret-foreground"
-      placeholder="Markdown source…"
-    />
   )
 }
 
