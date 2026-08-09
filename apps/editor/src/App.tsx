@@ -11,6 +11,7 @@ import {
   PanelLeft,
   RefreshCw,
   Sun,
+  X,
 } from 'lucide-react'
 import { FileTree } from './components/FileTree'
 import { SourceEditor } from './components/SourceEditor'
@@ -43,8 +44,16 @@ function normalizeMarkdown(md: string): string {
 export default function App() {
   const [workspace, setWorkspace] = useState<api.WorkspaceInfo | null>(null)
   const [tree, setTree] = useState<TreeNode[]>([])
-  const [openFile, setOpenFile] = useState<string | null>(null)
-  const [content, setContent] = useState('')
+
+  // --- multi-tab editing state -------------------------------------------
+  interface Tab {
+    path: string
+    content: string
+    saved: string
+  }
+  const [tabs, setTabs] = useState<Tab[]>([])
+  const [activePath, setActivePath] = useState<string | null>(null)
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -54,29 +63,32 @@ export default function App() {
   const [dark, setDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [error, setError] = useState('')
 
+  // Derived: the active tab drives the editor + status bar
+  const activeTab = tabs.find((t) => t.path === activePath) ?? null
+  const openFile = activeTab?.path ?? null
+  const content = activeTab?.content ?? ''
+
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const contentRef = useRef('')
-  const openFileRef = useRef<string | null>(null)
-  const lastSavedContentRef = useRef('')
-  contentRef.current = content
-  openFileRef.current = openFile
+  const tabsRef = useRef<Tab[]>([])
+  const activePathRef = useRef<string | null>(null)
+  tabsRef.current = tabs
+  activePathRef.current = activePath
 
   const flushSave = useCallback(async () => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    const path = openFileRef.current
-    if (!path) return
-    const md = contentRef.current
-    if (md === lastSavedContentRef.current) {
+    const tab = tabsRef.current.find((t) => t.path === activePathRef.current)
+    if (!tab) return
+    if (tab.content === tab.saved) {
       setSaveState('saved')
       return
     }
     setSaveState('saving')
     try {
-      await api.saveFile(path, normalizeMarkdown(md))
-      lastSavedContentRef.current = md
+      await api.saveFile(tab.path, normalizeMarkdown(tab.content))
+      setTabs((prev) => prev.map((t) => (t.path === tab.path ? { ...t, saved: t.content } : t)))
       setSaveState('saved')
     } catch (err) {
       setSaveState('error')
@@ -140,12 +152,20 @@ export default function App() {
 
   const openFileByPath = useCallback(
     async (path: string) => {
+      // Save any pending edits of the outgoing tab before switching.
       await flushSave()
+
+      // Already open? Just activate the tab (keeps its unsaved content).
+      if (tabsRef.current.some((t) => t.path === path)) {
+        setActivePath(path)
+        localStorage.setItem(LAST_FILE_KEY, path)
+        setError('')
+        return
+      }
       try {
         const { content } = await api.getFile(path)
-        setContent(content)
-        lastSavedContentRef.current = content
-        setOpenFile(path)
+        setTabs((prev) => [...prev, { path, content, saved: content }])
+        setActivePath(path)
         setSaveState('saved')
         setError('')
         localStorage.setItem(LAST_FILE_KEY, path)
@@ -156,12 +176,27 @@ export default function App() {
     [flushSave]
   )
 
+  const closeTab = useCallback((path: string) => {
+    void flushSave()
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path)
+      if (idx === -1) return prev
+      const next = prev.filter((t) => t.path !== path)
+      if (activePathRef.current === path) {
+        const neighbor = next[idx] ?? next[idx - 1] ?? null
+        setActivePath(neighbor ? neighbor.path : null)
+        if (!neighbor) localStorage.removeItem(LAST_FILE_KEY)
+      }
+      return next
+    })
+  }, [])
+
   const openFolder = useCallback(async (root: string) => {
     try {
       const ws = await api.setWorkspace(root)
       setWorkspace(ws)
-      setOpenFile(null)
-      setContent('')
+      setTabs([])
+      setActivePath(null)
       setSaveState('idle')
       setError('')
       await loadTree()
@@ -172,7 +207,9 @@ export default function App() {
 
   const handleEditorUpdate = useCallback(
     (md: string) => {
-      setContent(md)
+      const path = activePathRef.current
+      if (!path) return
+      setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, content: md } : t)))
       scheduleSave()
     },
     [scheduleSave]
@@ -205,8 +242,10 @@ export default function App() {
     const to = path.includes('/') ? `${path.slice(0, path.lastIndexOf('/') + 1)}${name}` : name
     try {
       await api.renameEntry(path, to)
-      if (openFileRef.current === path) {
-        setOpenFile(to)
+      // Keep tabs in sync (rename the matching tab's path)
+      setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, path: to } : t)))
+      if (activePathRef.current === path) {
+        setActivePath(to)
         localStorage.setItem(LAST_FILE_KEY, to)
       }
       await loadTree()
@@ -218,17 +257,14 @@ export default function App() {
   const deleteEntry = useCallback(async (path: string) => {
     try {
       await api.deleteEntry(path)
-      if (openFileRef.current === path) {
-        setOpenFile(null)
-        setContent('')
-        setSaveState('idle')
-        localStorage.removeItem(LAST_FILE_KEY)
+      if (tabsRef.current.some((t) => t.path === path)) {
+        closeTab(path)
       }
       await loadTree()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [loadTree])
+  }, [loadTree, closeTab])
 
   const toggleTheme = useCallback(() => setDark((d) => !d), [])
 
@@ -418,6 +454,21 @@ export default function App() {
               </button>
             </header>
 
+            {/* Tab bar */}
+            {tabs.length > 0 && (
+              <TabBar
+                tabs={tabs}
+                activePath={activePath}
+                onActivate={(p) => {
+                  void flushSave()
+                  setActivePath(p)
+                  setPendingSearch('')
+                  localStorage.setItem(LAST_FILE_KEY, p)
+                }}
+                onClose={closeTab}
+              />
+            )}
+
             {/* Editor */}
             <main className="flex-1 min-h-0 overflow-y-auto">
               {openFile ? (
@@ -489,6 +540,65 @@ function ToolbarButton({
     >
       {children}
     </button>
+  )
+}
+
+function TabBar({
+  tabs,
+  activePath,
+  onActivate,
+  onClose,
+}: {
+  tabs: Array<{ path: string; content: string; saved: string }>
+  activePath: string | null
+  onActivate: (path: string) => void
+  onClose: (path: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-0.5 h-9 px-2 overflow-x-auto shrink-0 border-b border-border bg-background-elevated/60">
+      {tabs.map((tab) => {
+        const name = tab.path.split('/').pop() ?? tab.path
+        const dirty = tab.content !== tab.saved
+        const active = tab.path === activePath
+        return (
+          <div
+            key={tab.path}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onActivate(tab.path)}
+            onMouseDown={(e) => e.preventDefault()}
+            className={cn(
+              'group flex items-center gap-1.5 h-7 px-3 rounded-[7px] text-[12.5px] cursor-pointer select-none whitespace-nowrap',
+              active
+                ? 'bg-foreground/[0.08] text-foreground'
+                : 'text-foreground/60 hover:bg-foreground/[0.04] hover:text-foreground/80'
+            )}
+            title={tab.path}
+          >
+            <span
+              className={cn(
+                'w-1.5 h-1.5 rounded-full shrink-0',
+                dirty ? 'bg-info' : active ? 'bg-accent' : 'bg-transparent'
+              )}
+            />
+            <span className="max-w-40 truncate">{name}</span>
+            <button
+              className={cn(
+                'p-0.5 rounded-[4px] cursor-pointer opacity-0 group-hover:opacity-100',
+                active ? 'opacity-70 hover:opacity-100' : 'hover:bg-foreground/[0.06]'
+              )}
+              title="Close tab"
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose(tab.path)
+              }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
