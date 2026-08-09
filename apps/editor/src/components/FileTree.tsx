@@ -54,6 +54,7 @@ export function FileTree({
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [dragPath, setDragPath] = useState<string | null>(null)
+  const dragPathRef = useRef<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
 
   useEffect(() => {
@@ -77,43 +78,54 @@ export function FileTree({
   }, [])
 
   const handleDragStart = useCallback((e: React.DragEvent, node: TreeNode) => {
-    e.dataTransfer.setData('text/craft-path', node.path)
+    // Best-effort payload (some Electron builds drop custom MIME types);
+    // the authoritative source is dragPathRef, kept in sync below.
+    try {
+      e.dataTransfer.setData('text/craft-path', node.path)
+    } catch {
+      // ignore — ref fallback covers this
+    }
     e.dataTransfer.effectAllowed = 'move'
     setDragPath(node.path)
+    dragPathRef.current = node.path
   }, [])
 
-  const isDragPayload = (e: React.DragEvent): boolean =>
-    Array.from(e.dataTransfer.types).includes('text/craft-path')
+  const clearDrag = useCallback(() => {
+    setDragPath(null)
+    dragPathRef.current = null
+    setDropTarget(null)
+  }, [])
 
   /**
    * Decide the drop zone from the cursor position inside a row:
    * - folders: the whole row → move INTO the folder (folder highlights)
    * - files: an insertion line (before/after) → move to that file's folder
+   *
+   * preventDefault is ALWAYS called (no dataTransfer inspection): the
+   * drop event only fires on elements whose dragover was default-prevented,
+   * and inspecting types is unreliable inside Electron.
    */
-  const handleRowDragOver = useCallback(
-    (e: React.DragEvent, node: TreeNode) => {
-      if (!isDragPayload(e)) return
-      e.preventDefault()
-      e.stopPropagation()
-      e.dataTransfer.dropEffect = 'move'
-      if (node.type === 'folder') {
-        setDropTarget({ kind: 'folder', path: node.path })
-      } else {
-        const rect = e.currentTarget.getBoundingClientRect()
-        const rel = (e.clientY - rect.top) / rect.height
-        setDropTarget({ kind: 'line', path: node.path, pos: rel < 0.5 ? 'before' : 'after' })
-      }
-    },
-    []
-  )
+  const handleRowDragOver = useCallback((e: React.DragEvent, node: TreeNode) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    if (node.type === 'folder') {
+      setDropTarget({ kind: 'folder', path: node.path })
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect()
+      const rel = (e.clientY - rect.top) / rect.height
+      setDropTarget({ kind: 'line', path: node.path, pos: rel < 0.5 ? 'before' : 'after' })
+    }
+  }, [])
 
   const handleRowDrop = useCallback(
     (e: React.DragEvent, node: TreeNode) => {
       e.preventDefault()
       e.stopPropagation()
-      const from = e.dataTransfer.getData('text/craft-path') || dragPath
-      setDropTarget(null)
-      setDragPath(null)
+      // Authoritative drag source: the ref (dataTransfer payload may be
+      // unavailable in Electron).
+      const from = dragPathRef.current ?? dragPath
+      clearDrag()
       if (!from) return
       if (node.type === 'folder') {
         // Drop on a folder → move INTO it
@@ -124,7 +136,7 @@ export function FileTree({
         if (from !== parent) onMove(from, parent)
       }
     },
-    [dragPath, onMove]
+    [dragPath, onMove, clearDrag]
   )
 
   const renderNode = useCallback(
@@ -145,12 +157,10 @@ export function FileTree({
             role="treeitem"
             draggable
             onDragStart={(e) => handleDragStart(e, node)}
-            onDragEnter={(e) => {
-              if (isDragPayload(e)) handleRowDragOver(e, node)
-            }}
+            onDragEnter={(e) => handleRowDragOver(e, node)}
             onDragOver={(e) => handleRowDragOver(e, node)}
             onDragLeave={(e) => {
-              if (isDragPayload(e) && !e.currentTarget.contains(e.relatedTarget as Node)) {
+              if (dragPathRef.current && !e.currentTarget.contains(e.relatedTarget as Node)) {
                 setDropTarget(null)
               }
             }}
@@ -209,10 +219,9 @@ export function FileTree({
       className="flex-1 overflow-y-auto py-1"
       role="tree"
       onDragEnter={(e) => {
-        if (isDragPayload(e)) setDropTarget({ kind: 'root' })
+        if (dragPathRef.current) setDropTarget({ kind: 'root' })
       }}
       onDragOver={(e) => {
-        if (!isDragPayload(e)) return
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
         setDropTarget({ kind: 'root' })
@@ -222,9 +231,8 @@ export function FileTree({
       }}
       onDrop={(e) => {
         e.preventDefault()
-        const from = e.dataTransfer.getData('text/craft-path') || dragPath
-        setDropTarget(null)
-        setDragPath(null)
+        const from = dragPathRef.current ?? dragPath
+        clearDrag()
         if (from) onMove(from, '')
       }}
     >
