@@ -82,12 +82,18 @@ export function renameEntry(from: string, to: string): Promise<{ ok: true }> {
 
 /**
  * Move a file/folder into another folder (drag & drop in the file tree).
- * `toDir` may be '' for the workspace root. Returns the new relative path.
+ * `toDir` may be '' for the workspace root.
+ * `anchor`/`before` insert the entry beside `anchor` in the display order
+ * (used for reordering files within a folder).
  */
-export function moveEntry(from: string, toDir: string): Promise<{ ok: true; to: string }> {
+export function moveEntry(
+  from: string,
+  toDir: string,
+  opts?: { anchor?: string; before?: boolean }
+): Promise<{ ok: true; to: string }> {
   return request<{ ok: true; to: string }>('/api/move', {
     method: 'POST',
-    body: JSON.stringify({ from, toDir }),
+    body: JSON.stringify({ from, toDir, anchor: opts?.anchor, before: opts?.before }),
   })
 }
 

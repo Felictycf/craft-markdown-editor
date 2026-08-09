@@ -23,7 +23,7 @@ interface FileTreeProps {
   onNewFolder: (folderPath: string) => void
   onRename: (path: string) => void
   onDelete: (path: string) => void
-  onMove: (from: string, toDir: string) => void
+  onMove: (from: string, toDir: string, opts?: { anchor?: string; before?: boolean }) => void
 }
 
 interface MenuState {
@@ -131,9 +131,12 @@ export function FileTree({
         // Drop on a folder → move INTO it
         if (from !== node.path) onMove(from, node.path)
       } else {
-        // Drop on a file → move to that file's parent folder
+        // Drop on a file → move to that file's parent folder and INSERT
+        // at the line position (before/after the target file)
         const parent = dirOf(node.path)
-        if (from !== parent) onMove(from, parent)
+        const rect = e.currentTarget.getBoundingClientRect()
+        const rel = (e.clientY - rect.top) / rect.height
+        onMove(from, parent, { anchor: node.name, before: rel < 0.5 })
       }
     },
     [dragPath, onMove, clearDrag]

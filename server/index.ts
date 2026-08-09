@@ -72,24 +72,53 @@ interface TreeNode {
   editable?: boolean
 }
 
+const ORDER_FILE = '.craft-order.json'
+
+/** Per-directory display order: { "<dirRelPath>": ["name1", "name2", ...] } */
+async function loadOrder(): Promise<Record<string, string[]>> {
+  try {
+    const raw = await readFile(join(requireRoot(), ORDER_FILE), 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, string[]>
+    return typeof parsed === 'object' && parsed !== null ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function saveOrder(order: Record<string, string[]>) {
+  await writeFile(join(requireRoot(), ORDER_FILE), JSON.stringify(order, null, 2), 'utf8')
+}
+
 async function buildTree(dir: string, depth: number): Promise<TreeNode[]> {
   if (depth > MAX_TREE_DEPTH) return []
   const entries = await readdir(dir, { withFileTypes: true })
+  // Display order: folders first, then within the same type follow the
+  // saved order (unknown entries fall back to alphabetical).
+  const rel = dir === requireRoot() ? '' : dir.slice(requireRoot().length + 1).split(sep).join('/')
+  const orderMap = await loadOrder()
+  const ordered = orderMap[rel] ?? []
+  const orderIndex = new Map(ordered.map((name, i) => [name, i]))
   entries.sort((a, b) => {
     const ad = a.isDirectory() ? 0 : 1
     const bd = b.isDirectory() ? 0 : 1
-    return ad - bd || a.name.localeCompare(b.name)
+    if (ad !== bd) return ad - bd
+    const ia = orderIndex.get(a.name)
+    const ib = orderIndex.get(b.name)
+    if (ia !== undefined && ib !== undefined) return ia - ib
+    if (ia !== undefined) return -1
+    if (ib !== undefined) return 1
+    return a.name.localeCompare(b.name)
   })
 
   const nodes: TreeNode[] = []
   for (const entry of entries) {
     if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
     const abs = join(dir, entry.name)
-    const rel = abs.slice(requireRoot().length + 1).split(sep).join('/')
+    const childRel = abs.slice(requireRoot().length + 1).split(sep).join('/')
     if (entry.isDirectory()) {
       nodes.push({
         name: entry.name,
-        path: rel,
+        path: childRel,
         type: 'folder',
         children: await buildTree(abs, depth + 1),
       })
@@ -97,7 +126,7 @@ async function buildTree(dir: string, depth: number): Promise<TreeNode[]> {
       const ext = extname(entry.name).toLowerCase()
       nodes.push({
         name: entry.name,
-        path: rel,
+        path: childRel,
         type: 'file',
         editable: ext === '.md' || ext === '.markdown',
       })
@@ -227,9 +256,15 @@ async function handleApi(req: Request): Promise<Response> {
     }
 
     // --- move (drag & drop in the file tree) ------------------------------
-    // POST /api/move { from, toDir } → moves a file/folder into toDir
+    // POST /api/move { from, toDir, anchor?, before? } → moves a file/folder
+    // into toDir, optionally inserting it beside `anchor` in the display order.
     if (path === '/api/move' && req.method === 'POST') {
-      const body = (await req.json()) as { from?: string; toDir?: string }
+      const body = (await req.json()) as {
+        from?: string
+        toDir?: string
+        anchor?: string
+        before?: boolean
+      }
       if (!body.from) return jsonError(400, 'Missing from')
       const fromAbs = safeResolve(body.from)
       const dirAbs = safeResolve(body.toDir ?? '')
@@ -238,7 +273,9 @@ async function handleApi(req: Request): Promise<Response> {
         if (!dirInfo.isDirectory()) return jsonError(400, 'Target is not a folder')
       } else {
         // empty toDir = workspace root
-        if (dirnameOf(fromAbs) === requireRoot()) return json(200, { ok: true, to: body.from })
+        if (dirnameOf(fromAbs) === requireRoot() && !body.anchor) {
+          return json(200, { ok: true, to: body.from })
+        }
       }
       // Prevent moving into itself or its own subtree
       if (fromAbs === dirAbs || dirAbs.startsWith(fromAbs + sep)) {
@@ -246,9 +283,36 @@ async function handleApi(req: Request): Promise<Response> {
       }
       const name = basename(fromAbs)
       const target = join(dirAbs, name)
-      if (existsSync(target)) return jsonError(400, `Already exists: ${basename(fromAbs)}`)
-      await rename(fromAbs, target)
+      if (target !== fromAbs && existsSync(target)) {
+        return jsonError(400, `Already exists: ${name}`)
+      }
+      if (target !== fromAbs) await rename(fromAbs, target)
       const rel = target.slice(requireRoot().length + 1).split(sep).join('/')
+
+      // Update the display order of the destination directory.
+      // First complete the list with every entry currently in the directory
+      // (alphabetical for the unlisted ones), so anchors always resolve.
+      const dirKey = body.toDir ? body.toDir.split(sep).join('/') : ''
+      const order = await loadOrder()
+      const list = (order[dirKey] ?? []).filter((n) => n !== name)
+      {
+        const dirEntries = await readdir(dirAbs, { withFileTypes: true })
+        const missing = dirEntries
+          .filter((en) => !en.name.startsWith('.') && !SKIP_DIRS.has(en.name) && !list.includes(en.name))
+          .map((en) => en.name)
+          .sort((a, b) => a.localeCompare(b))
+        list.push(...missing)
+      }
+      if (body.anchor && body.anchor !== name) {
+        const idx = list.indexOf(body.anchor)
+        const insertAt = idx === -1 ? list.length : body.before ? idx : idx + 1
+        list.splice(insertAt, 0, name)
+      } else {
+        list.push(name)
+      }
+      order[dirKey] = list
+      await saveOrder(order)
+
       return json(200, { ok: true, to: rel })
     }
 

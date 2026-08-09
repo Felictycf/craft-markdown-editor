@@ -71,27 +71,53 @@ function dirnameOf(p) {
 // Tree
 // ---------------------------------------------------------------------------
 
+const ORDER_FILE = '.craft-order.json'
+
+async function loadOrder() {
+  try {
+    const raw = await fsp.readFile(path.join(requireRoot(), ORDER_FILE), 'utf8')
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'object' && parsed !== null ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function saveOrder(order) {
+  await fsp.writeFile(path.join(requireRoot(), ORDER_FILE), JSON.stringify(order, null, 2), 'utf8')
+}
+
 async function buildTree(dir, depth) {
   if (depth > MAX_TREE_DEPTH) return []
   const entries = await fsp.readdir(dir, { withFileTypes: true })
+  const rel = dir === requireRoot() ? '' : dir.slice(requireRoot().length + 1).split(path.sep).join('/')
+  const orderMap = await loadOrder()
+  const ordered = orderMap[rel] ?? []
+  const orderIndex = new Map(ordered.map((name, i) => [name, i]))
   entries.sort((a, b) => {
     const ad = a.isDirectory() ? 0 : 1
     const bd = b.isDirectory() ? 0 : 1
-    return ad - bd || a.name.localeCompare(b.name)
+    if (ad !== bd) return ad - bd
+    const ia = orderIndex.get(a.name)
+    const ib = orderIndex.get(b.name)
+    if (ia !== undefined && ib !== undefined) return ia - ib
+    if (ia !== undefined) return -1
+    if (ib !== undefined) return 1
+    return a.name.localeCompare(b.name)
   })
 
   const nodes = []
   for (const entry of entries) {
     if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
     const abs = path.join(dir, entry.name)
-    const rel = abs.slice(requireRoot().length + 1).split(path.sep).join('/')
+    const childRel = abs.slice(requireRoot().length + 1).split(path.sep).join('/')
     if (entry.isDirectory()) {
-      nodes.push({ name: entry.name, path: rel, type: 'folder', children: await buildTree(abs, depth + 1) })
+      nodes.push({ name: entry.name, path: childRel, type: 'folder', children: await buildTree(abs, depth + 1) })
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase()
       nodes.push({
         name: entry.name,
-        path: rel,
+        path: childRel,
         type: 'file',
         editable: ext === '.md' || ext === '.markdown',
       })
@@ -222,7 +248,7 @@ async function handleApi(req, res, url) {
       if (body.toDir) {
         const dirInfo = await fsp.stat(dirAbs)
         if (!dirInfo.isDirectory()) return json(res, 400, { error: 'Target is not a folder' })
-      } else if (dirnameOf(fromAbs) === requireRoot()) {
+      } else if (dirnameOf(fromAbs) === requireRoot() && !body.anchor) {
         return json(res, 200, { ok: true, to: body.from })
       }
       if (fromAbs === dirAbs || dirAbs.startsWith(fromAbs + path.sep)) {
@@ -230,9 +256,33 @@ async function handleApi(req, res, url) {
       }
       const name = path.basename(fromAbs)
       const target = path.join(dirAbs, name)
-      if (fs.existsSync(target)) return json(res, 400, { error: `Already exists: ${path.basename(fromAbs)}` })
-      await fsp.rename(fromAbs, target)
+      if (target !== fromAbs && fs.existsSync(target)) {
+        return json(res, 400, { error: `Already exists: ${name}` })
+      }
+      if (target !== fromAbs) await fsp.rename(fromAbs, target)
       const rel = target.slice(requireRoot().length + 1).split(path.sep).join('/')
+
+      const dirKey = body.toDir ? String(body.toDir).split(path.sep).join('/') : ''
+      const order = await loadOrder()
+      const list = (order[dirKey] ?? []).filter((n) => n !== name)
+      {
+        const dirEntries = await fsp.readdir(dirAbs, { withFileTypes: true })
+        const missing = dirEntries
+          .filter((en) => !en.name.startsWith('.') && !SKIP_DIRS.has(en.name) && !list.includes(en.name))
+          .map((en) => en.name)
+          .sort((a, b) => a.localeCompare(b))
+        list.push(...missing)
+      }
+      if (body.anchor && body.anchor !== name) {
+        const idx = list.indexOf(String(body.anchor))
+        const insertAt = idx === -1 ? list.length : body.before ? idx : idx + 1
+        list.splice(insertAt, 0, name)
+      } else {
+        list.push(name)
+      }
+      order[dirKey] = list
+      await saveOrder(order)
+
       return json(res, 200, { ok: true, to: rel })
     }
 
