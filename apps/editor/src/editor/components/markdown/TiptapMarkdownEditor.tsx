@@ -178,6 +178,51 @@ function insertImageNode(
   }).run()
 }
 
+/**
+ * Detect GFM table syntax in pasted text: a line containing `|` followed by
+ * a separator line of dashes/pipes/colons.
+ */
+function detectMarkdownTable(text: string): boolean {
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!lines[i].includes('|')) continue
+    const sep = lines[i + 1]
+    if (sep.includes('-') && /^\s*\|?[\s|: -]+\|?\s*$/.test(sep)) return true
+  }
+  return false
+}
+
+/**
+ * Convert an HTML <table> (e.g. copied from another app) into a GFM table
+ * string so it goes through the markdown parser (the raw HTML table path
+ * corrupts thead/tbody structure in TipTap).
+ */
+function htmlTableToMarkdown(html: string): string | null {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const table = doc.querySelector('table')
+  if (!table) return null
+  const rows = table.querySelectorAll('tr')
+  if (rows.length === 0) return null
+
+  const grid: string[][] = []
+  let maxCols = 0
+  rows.forEach((tr) => {
+    const cells = Array.from(tr.querySelectorAll('th, td')).map((c) => (c.textContent ?? '').trim())
+    grid.push(cells)
+    maxCols = Math.max(maxCols, cells.length)
+  })
+
+  const line = (row: string[]) =>
+    `| ${row.map((c) => c.replace(/\|/g, '\\|')).join(' | ')} |`
+  const padded = grid.map((row) => {
+    const r = [...row]
+    while (r.length < maxCols) r.push('')
+    return r
+  })
+  const sep = `| ${Array(maxCols).fill('---').join(' | ')} |`
+  return [line(padded[0]), sep, ...padded.slice(1).map(line)].join('\n')
+}
+
 async function handleDroppedOrPastedFiles(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   files: File[],
@@ -351,7 +396,20 @@ export function TiptapMarkdownEditor({
 
         // Plain-text clipboard (no HTML): parse the pasted text as markdown so
         // headings, bold, lists, quotes and code fences render immediately.
-        if (text.length > 0 && !event.clipboardData?.types?.includes('text/html')) {
+        const hasHtml = event.clipboardData?.types?.includes('text/html') ?? false
+        let markdownInsert: string | null = null
+        if (text.length > 0 && (!hasHtml || detectMarkdownTable(text))) {
+          markdownInsert = text
+        } else if (hasHtml && text.length === 0) {
+          // HTML-only clipboard containing a table: convert to GFM first —
+          // the raw HTML table path corrupts thead/tbody structure.
+          const html = event.clipboardData?.getData('text/html') ?? ''
+          if (html.includes('<table')) {
+            markdownInsert = htmlTableToMarkdown(html)
+          }
+        }
+
+        if (markdownInsert != null) {
           const { state } = activeEditor
           const { from, to } = state.selection
           // Block-level content (tables, code fences, …) pasted into an empty
@@ -361,13 +419,13 @@ export function TiptapMarkdownEditor({
             const $from = state.doc.resolve(from)
             activeEditor.commands.insertContentAt(
               { from: $from.before(), to: $from.after() },
-              text,
+              markdownInsert,
               { contentType: 'markdown' } as never
             )
           } else {
             activeEditor.commands.insertContentAt(
               { from, to },
-              text,
+              markdownInsert,
               { contentType: 'markdown' } as never
             )
           }
