@@ -632,13 +632,6 @@ async function runDragTest() {
     const dragLog = await wc.executeJavaScript('window.__dragLog ? window.__dragLog.join(" | ") : "no log"')
     console.log('[craft] drag events:', dragLog)
 
-    // Direct API probe: does the Electron server's /api/move reorder work?
-    const probe = await wc.executeJavaScript(`fetch('/api/move', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'docs/a.md', toDir: 'docs', anchor: 'b.md', before: false })
-    }).then(r => r.json())`)
-    console.log('[craft] api probe:', JSON.stringify(probe))
-
     const result = await wc.executeJavaScript(`fetch('/api/tree').then(r => r.json()).then(d => {
       const names = [];
       const walk = (nodes) => nodes.forEach(n => { names.push(n.path); if (n.children) walk(n.children); });
