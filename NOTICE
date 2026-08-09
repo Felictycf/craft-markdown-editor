@@ -1,0 +1,26 @@
+Craft Markdown
+Copyright 2026
+
+This product is a fork of Craft Agents (https://github.com/craft-ai-agents/craft-agents-oss),
+licensed under the Apache License 2.0.
+
+The editor component (apps/editor/src/editor) contains software derived from
+Craft Agents:
+
+  Craft Agents
+  Copyright 2026 Craft Docs Ltd.
+  https://craft.do
+
+The source code has been modified: agent, chat and server functionality was
+removed, leaving a pure markdown editor (file tree + WYSIWYG rendering),
+with additional features (document outline / TOC, source view navigation).
+
+Craft Agents uses the Claude Agent SDK, which is subject to Anthropic's
+Commercial Terms of Service: https://www.anthropic.com/legal/commercial-terms
+(this dependency was removed in this fork).
+
+Third-party dependencies are listed in package.json files and are subject
+to their respective licenses.
+
+"Craft" and "Craft Agents" are trademarks of Craft Docs Ltd. This project is
+not affiliated with, endorsed by, or sponsored by Craft Docs Ltd.

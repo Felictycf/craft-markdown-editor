@@ -1,6 +1,8 @@
 # Craft Markdown
 
-一个极简、纯粹的 Markdown 编辑器，所见即所得（WYSIWYG）即时渲染。基于开源 [craft-agents-oss](https://github.com/craft-ai-agents/craft-agents-oss) 精简而成——去掉了所有与编辑无关的部分（无 Agent、无聊天、无服务端），只留下文件树 + 实时渲染编辑器。
+一个极简、纯粹的 Markdown 编辑器，所见即所得（WYSIWYG）即时渲染。基于开源 [craft-agents-oss](https://github.com/craft-ai-agents/craft-agents-oss)（Apache 2.0）精简而成——去掉了所有与编辑无关的部分（无 Agent、无聊天、无服务端），只留下文件树 + 实时渲染编辑器。
+
+> Fork of [Craft Agents](https://github.com/craft-ai-agents/craft-agents-oss)，编辑相关组件来自原仓库并做了大量修改。
 
 ## 特性
 
@@ -73,3 +75,9 @@ server/index.ts       Bun 文件服务器：静态资源 + 工作区文件 API
 ## 技术栈
 
 Vite · React 18 · TipTap 3 · CodeMirror 6 · Shiki · Mermaid · KaTeX · Tailwind CSS 4 · Bun
+
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE)，是 [Craft Agents](https://github.com/craft-ai-agents/craft-agents-oss)（Apache 2.0，Copyright 2026 Craft Docs Ltd.）的派生作品，详见 [NOTICE](NOTICE)。
+
+"Craft" 和 "Craft Agents" 是 Craft Docs Ltd. 的商标。本项目与 Craft Docs Ltd. 无隶属或背书关系。
