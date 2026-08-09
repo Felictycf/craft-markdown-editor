@@ -55,6 +55,8 @@ export function FileTree({
   const menuRef = useRef<HTMLDivElement>(null)
   const [dragPath, setDragPath] = useState<string | null>(null)
   const dragPathRef = useRef<string | null>(null)
+  const dropTargetRef = useRef<DropTarget>(null)
+  const droppedRef = useRef(false)
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export function FileTree({
     setDragPath(null)
     dragPathRef.current = null
     setDropTarget(null)
+    dropTargetRef.current = null
   }, [])
 
   /**
@@ -109,38 +112,57 @@ export function FileTree({
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'move'
+    let next: DropTarget
     if (node.type === 'folder') {
-      setDropTarget({ kind: 'folder', path: node.path })
+      next = { kind: 'folder', path: node.path }
     } else {
       const rect = e.currentTarget.getBoundingClientRect()
       const rel = (e.clientY - rect.top) / rect.height
-      setDropTarget({ kind: 'line', path: node.path, pos: rel < 0.5 ? 'before' : 'after' })
+      next = { kind: 'line', path: node.path, pos: rel < 0.5 ? 'before' : 'after' }
     }
+    dropTargetRef.current = next
+    setDropTarget(next)
   }, [])
+
+  const executeMove = useCallback(
+    (target: DropTarget) => {
+      const from = dragPathRef.current ?? dragPath
+      if (!from || !target) return
+      if (target.kind === 'folder') {
+        if (from !== target.path) onMove(from, target.path)
+      } else if (target.kind === 'line') {
+        const parent = dirOf(target.path)
+        if (from !== parent) {
+          onMove(from, parent, { anchor: target.path.split('/').pop(), before: target.pos === 'before' })
+        }
+      } else if (target.kind === 'root') {
+        if (from) onMove(from, '')
+      }
+    },
+    [dragPath, onMove]
+  )
 
   const handleRowDrop = useCallback(
     (e: React.DragEvent, node: TreeNode) => {
       e.preventDefault()
       e.stopPropagation()
-      // Authoritative drag source: the ref (dataTransfer payload may be
-      // unavailable in Electron).
-      const from = dragPathRef.current ?? dragPath
+      droppedRef.current = true
+      const target = dropTargetRef.current
       clearDrag()
-      if (!from) return
-      if (node.type === 'folder') {
-        // Drop on a folder → move INTO it
-        if (from !== node.path) onMove(from, node.path)
-      } else {
-        // Drop on a file → move to that file's parent folder and INSERT
-        // at the line position (before/after the target file)
-        const parent = dirOf(node.path)
-        const rect = e.currentTarget.getBoundingClientRect()
-        const rel = (e.clientY - rect.top) / rect.height
-        onMove(from, parent, { anchor: node.name, before: rel < 0.5 })
-      }
+      executeMove(target)
     },
-    [dragPath, onMove, clearDrag]
+    [executeMove, clearDrag]
   )
+
+  const handleDragEnd = useCallback(() => {
+    // Fallback for Electron, where the drop event can be swallowed when
+    // dragging upward (dragend always fires). Move to the last hovered target.
+    if (!droppedRef.current) {
+      const target = dropTargetRef.current
+      if (target) executeMove(target)
+    }
+    clearDrag()
+  }, [executeMove, clearDrag])
 
   const renderNode = useCallback(
     (node: TreeNode, depth: number) => {
@@ -169,6 +191,7 @@ export function FileTree({
               }
             }}
             onDrop={(e) => handleRowDrop(e, node)}
+            onDragEnd={handleDragEnd}
             className={cn(
               'group flex items-center gap-1 h-7 pr-2 cursor-pointer select-none',
               'text-[13px] rounded-[6px] mx-1',
@@ -228,16 +251,19 @@ export function FileTree({
       onDragOver={(e) => {
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
-        setDropTarget({ kind: 'root' })
+        const next: DropTarget = { kind: 'root' }
+        dropTargetRef.current = next
+        setDropTarget(next)
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTarget(null)
       }}
+      onDragEnd={handleDragEnd}
       onDrop={(e) => {
         e.preventDefault()
-        const from = dragPathRef.current ?? dragPath
+        droppedRef.current = true
         clearDrag()
-        if (from) onMove(from, '')
+        executeMove(dropTargetRef.current)
       }}
     >
       {/* Drop-zone hint while dragging over the tree background (workspace root) */}

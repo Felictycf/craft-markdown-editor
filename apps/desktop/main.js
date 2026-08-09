@@ -597,7 +597,7 @@ async function runDragTest() {
       if (!src || !dst) return null;
       const s = src.getBoundingClientRect();
       const d = dst.getBoundingClientRect();
-      return { sx: s.x + s.width / 2, sy: s.y + s.height / 2, dx: d.x + 15, dy: d.y + d.height * 0.8 };
+      return { sx: s.x + s.width / 2, sy: s.y + s.height / 2, dx: d.x + 15, dy: d.y + d.height * 0.15 };
     })()`)
     if (!rects) {
       console.log('[craft] drag test: rows not found')
