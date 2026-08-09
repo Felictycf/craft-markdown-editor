@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ChevronLeft,
+  Code2,
+  Eye,
   FilePlus2,
   FolderPlus,
   FolderOpen,
@@ -19,6 +21,7 @@ import type { TreeNode } from './api'
 import { cn } from './editor/lib/utils'
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
+type ViewMode = 'wysiwyg' | 'source'
 
 const SAVE_DELAY_MS = 700
 const LAST_FILE_KEY = 'craft-editor.lastFile'
@@ -42,6 +45,7 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('wysiwyg')
   const [dark, setDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [error, setError] = useState('')
 
@@ -372,6 +376,20 @@ export default function App() {
               {fileName && <span className="text-[13px] text-foreground/80 truncate">{fileName}</span>}
               <span className="flex-1" />
               <SaveIndicator state={saveState} />
+              {openFile && (
+                <button
+                  className={cn(
+                    'p-1.5 rounded-[6px] cursor-pointer',
+                    viewMode === 'source'
+                      ? 'text-accent bg-accent/10'
+                      : 'text-foreground/60 hover:bg-foreground/[0.05]'
+                  )}
+                  onClick={() => setViewMode((m) => (m === 'wysiwyg' ? 'source' : 'wysiwyg'))}
+                  title={viewMode === 'wysiwyg' ? 'View source (markdown)' : 'Back to editor'}
+                >
+                  {viewMode === 'wysiwyg' ? <Code2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              )}
               <button
                 className="p-1.5 rounded-[6px] text-foreground/60 hover:bg-foreground/[0.05] cursor-pointer"
                 onClick={toggleTheme}
@@ -385,12 +403,20 @@ export default function App() {
             <main className="flex-1 min-h-0 overflow-y-auto">
               {openFile ? (
                 <div className="max-w-[760px] mx-auto px-8 py-8">
-                  <TiptapMarkdownEditor
-                    key={openFile}
-                    content={content}
-                    onUpdate={handleEditorUpdate}
-                    placeholder="Start writing…"
-                  />
+                  {viewMode === 'source' ? (
+                    <SourceEditor
+                      value={content}
+                      onChange={handleEditorUpdate}
+                      onTabIntoWysiwyg={() => setViewMode('wysiwyg')}
+                    />
+                  ) : (
+                    <TiptapMarkdownEditor
+                      key={openFile}
+                      content={content}
+                      onUpdate={handleEditorUpdate}
+                      placeholder="Start writing…"
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center gap-2 text-foreground/40">
@@ -433,6 +459,49 @@ function ToolbarButton({
     >
       {children}
     </button>
+  )
+}
+
+/**
+ * Raw markdown source editor (plain textarea).
+ * Cmd/Ctrl+S and Cmd/Ctrl+E shortcuts work here too.
+ */
+function SourceEditor({
+  value,
+  onChange,
+  onTabIntoWysiwyg,
+}: {
+  value: string
+  onChange: (md: string) => void
+  onTabIntoWysiwyg: () => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault()
+          const el = e.currentTarget
+          const { selectionStart, selectionEnd, value: v } = el
+          const next = `${v.slice(0, selectionStart)}  ${v.slice(selectionEnd)}`
+          el.value = next
+          el.setSelectionRange(selectionStart + 2, selectionStart + 2)
+          onChange(next)
+          return
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault()
+          onTabIntoWysiwyg()
+        }
+      }}
+      spellCheck={false}
+      className="w-full min-h-[70vh] resize-none outline-none bg-transparent font-mono text-[13.5px] leading-[1.6] text-foreground/90 caret-foreground"
+      placeholder="Markdown source…"
+    />
   )
 }
 
