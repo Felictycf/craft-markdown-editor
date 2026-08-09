@@ -616,37 +616,74 @@
 .tiptap-prose table,
 .tiptap-prose .tiptap-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
-  margin: 0.75rem 0;
+  margin: 0.875rem 0;
+  border: 1px solid var(--foreground-10);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--foreground-90);
 }
 
 .tiptap-prose th,
 .tiptap-prose td {
-  border: 1px solid var(--border);
-  padding: 6px 10px;
+  border-right: 1px solid var(--foreground-10);
+  border-bottom: 1px solid var(--foreground-10);
+  padding: 8px 12px;
   min-width: 60px;
   vertical-align: top;
   position: relative;
-}
-
-.tiptap-table th {
-  background: var(--foreground-5);
-  font-weight: 600;
   text-align: left;
 }
 
+/* Outer frame owns the edge — drop the rightmost / bottom borders */
+.tiptap-prose th:last-child,
+.tiptap-prose td:last-child {
+  border-right: none;
+}
+
+.tiptap-prose tr:last-child th,
+.tiptap-prose tr:last-child td {
+  border-bottom: none;
+}
+
+/* Header row */
+.tiptap-prose th {
+  background: var(--foreground-10);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: var(--foreground-80);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--foreground-20);
+}
+
+/* Zebra striping on body rows */
+.tiptap-prose tbody tr:nth-child(even) td {
+  background: var(--foreground-5);
+}
+
+/* Row hover */
+.tiptap-prose tbody tr:hover td {
+  background: var(--foreground-8);
+}
+
+/* Selected cells (cell selection drag) */
 .tiptap-prose .selectedCell::after {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
-  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   pointer-events: none;
   z-index: 1;
 }
 
 .tiptap-prose table .column-resize-handle {
-  position: fixed;
+  position: absolute;
   top: 0;
   right: -2px;
   bottom: -2px;
@@ -667,8 +704,9 @@
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border-radius: 8px;
-  background: var(--popover);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--popover) 88%, transparent);
+  backdrop-filter: blur(12px);
   box-shadow: var(--shadow-modal-small);
   border: 1px solid var(--border);
 }
