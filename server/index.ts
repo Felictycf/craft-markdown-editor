@@ -226,6 +226,32 @@ async function handleApi(req: Request): Promise<Response> {
       return json(200, { ok: true })
     }
 
+    // --- move (drag & drop in the file tree) ------------------------------
+    // POST /api/move { from, toDir } → moves a file/folder into toDir
+    if (path === '/api/move' && req.method === 'POST') {
+      const body = (await req.json()) as { from?: string; toDir?: string }
+      if (!body.from) return jsonError(400, 'Missing from')
+      const fromAbs = safeResolve(body.from)
+      const dirAbs = safeResolve(body.toDir ?? '')
+      if (body.toDir) {
+        const dirInfo = await stat(dirAbs)
+        if (!dirInfo.isDirectory()) return jsonError(400, 'Target is not a folder')
+      } else {
+        // empty toDir = workspace root
+        if (dirnameOf(fromAbs) === requireRoot()) return json(200, { ok: true, to: body.from })
+      }
+      // Prevent moving into itself or its own subtree
+      if (fromAbs === dirAbs || dirAbs.startsWith(fromAbs + sep)) {
+        return jsonError(400, 'Cannot move into itself')
+      }
+      const name = basename(fromAbs)
+      const target = join(dirAbs, name)
+      if (existsSync(target)) return jsonError(400, `Already exists: ${basename(fromAbs)}`)
+      await rename(fromAbs, target)
+      const rel = target.slice(requireRoot().length + 1).split(sep).join('/')
+      return json(200, { ok: true, to: rel })
+    }
+
     // --- global search across the workspace --------------------------------
     // GET /api/search?q=term → { results: [{ path, name, matches: [{line, text}] }] }
     if (path === '/api/search' && req.method === 'GET') {

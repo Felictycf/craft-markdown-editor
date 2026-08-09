@@ -23,6 +23,7 @@ interface FileTreeProps {
   onNewFolder: (folderPath: string) => void
   onRename: (path: string) => void
   onDelete: (path: string) => void
+  onMove: (from: string, toDir: string) => void
 }
 
 interface MenuState {
@@ -41,9 +42,12 @@ export function FileTree({
   onNewFolder,
   onRename,
   onDelete,
+  onMove,
 }: FileTreeProps) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [dragPath, setDragPath] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   useEffect(() => {
     if (!menu) return
@@ -65,21 +69,60 @@ export function FileTree({
     setMenu({ x: e.clientX, y: e.clientY, node })
   }, [])
 
+  const handleDragStart = useCallback((e: React.DragEvent, node: TreeNode) => {
+    e.dataTransfer.setData('text/craft-path', node.path)
+    e.dataTransfer.effectAllowed = 'move'
+    setDragPath(node.path)
+  }, [])
+
+  const handleDragOver = useCallback(
+    (e: React.DragEvent, node: TreeNode | null) => {
+      if (!dragPath) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDropTarget(node ? node.path : '')
+    },
+    [dragPath]
+  )
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, target: TreeNode | null) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const from = e.dataTransfer.getData('text/craft-path') || dragPath
+      const toDir = target ? target.path : ''
+      setDropTarget(null)
+      setDragPath(null)
+      if (from && from !== toDir) {
+        onMove(from, toDir)
+      }
+    },
+    [dragPath, onMove]
+  )
+
   const renderNode = useCallback(
     (node: TreeNode, depth: number) => {
       const isFolder = node.type === 'folder'
       const isExpanded = isFolder && expanded.has(node.path)
       const isSelected = !isFolder && node.path === openFile
       const isEditable = !isFolder && !!node.editable
+      const isDropTarget = isFolder && dropTarget === node.path
 
       return (
         <div key={node.path}>
           <div
             role="treeitem"
+            draggable
+            onDragStart={(e) => handleDragStart(e, node)}
+            onDragOver={(e) => handleDragOver(e, isFolder ? node : null)}
+            onDragLeave={() => isFolder && setDropTarget((d) => (d === node.path ? null : d))}
+            onDrop={(e) => handleDrop(e, isFolder ? node : null)}
             className={cn(
               'group flex items-center gap-1 h-7 pr-2 cursor-pointer select-none',
               'text-[13px] rounded-[6px] mx-1',
-              isSelected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/70 hover:bg-foreground/[0.03] hover:text-foreground'
+              isSelected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/70 hover:bg-foreground/[0.03] hover:text-foreground',
+              isDropTarget &&
+                'bg-accent/15 text-foreground ring-1 ring-inset ring-accent/60'
             )}
             style={{ paddingLeft: 8 + depth * 14 }}
             onClick={() => (isFolder ? onToggle(node.path) : onOpenFile(node.path))}
@@ -116,11 +159,19 @@ export function FileTree({
         </div>
       )
     },
-    [expanded, openFile, onToggle, onOpenFile, openMenu]
+    [expanded, openFile, onToggle, onOpenFile, openMenu, dropTarget, handleDragOver, handleDragStart, handleDrop]
   )
 
   return (
-    <div className="flex-1 overflow-y-auto py-1" role="tree">
+    <div
+      className="flex-1 overflow-y-auto py-1"
+      role="tree"
+      onDragOver={(e) => handleDragOver(e, null)}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTarget(null)
+      }}
+      onDrop={(e) => handleDrop(e, null)}
+    >
       {tree.map((node) => renderNode(node, 0))}
       {menu && (
         <div

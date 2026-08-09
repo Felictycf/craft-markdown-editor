@@ -266,6 +266,32 @@ export default function App() {
     }
   }, [loadTree, closeTab])
 
+  const moveEntry = useCallback(
+    async (from: string, toDir: string) => {
+      try {
+        const { to } = await api.moveEntry(from, toDir)
+        // Keep tabs in sync: the moved entry (or its subtree) changes path
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.path === from) return { ...t, path: to }
+            if (t.path.startsWith(from + '/')) return { ...t, path: to + t.path.slice(from.length) }
+            return t
+          })
+        )
+        const act = activePathRef.current
+        if (act === from || (act && act.startsWith(from + '/'))) {
+          const newAct = act === from ? to : to + act.slice(from.length)
+          setActivePath(newAct)
+          localStorage.setItem(LAST_FILE_KEY, newAct)
+        }
+        await loadTree()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [loadTree]
+  )
+
   const toggleTheme = useCallback(() => setDark((d) => !d), [])
 
   // ---------------------------------------------------------------------------
@@ -398,6 +424,7 @@ export default function App() {
                 onNewFolder={(f) => setDialog({ type: 'newFolder', folder: f })}
                 onRename={(p) => setDialog({ type: 'rename', path: p, name: p.split('/').pop() ?? '' })}
                 onDelete={(p) => setDialog({ type: 'delete', path: p })}
+                onMove={(from, toDir) => void moveEntry(from, toDir)}
               />
             </aside>
           )}

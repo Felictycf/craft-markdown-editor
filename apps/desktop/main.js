@@ -213,6 +213,29 @@ async function handleApi(req, res, url) {
       return json(res, 200, { ok: true })
     }
 
+    // --- move (drag & drop in the file tree) ------------------------------
+    if (url.pathname === '/api/move' && req.method === 'POST') {
+      const body = await readBody(req)
+      if (!body.from) return json(res, 400, { error: 'Missing from' })
+      const fromAbs = safeResolve(body.from)
+      const dirAbs = safeResolve(body.toDir ?? '')
+      if (body.toDir) {
+        const dirInfo = await fsp.stat(dirAbs)
+        if (!dirInfo.isDirectory()) return json(res, 400, { error: 'Target is not a folder' })
+      } else if (dirnameOf(fromAbs) === requireRoot()) {
+        return json(res, 200, { ok: true, to: body.from })
+      }
+      if (fromAbs === dirAbs || dirAbs.startsWith(fromAbs + path.sep)) {
+        return json(res, 400, { error: 'Cannot move into itself' })
+      }
+      const name = path.basename(fromAbs)
+      const target = path.join(dirAbs, name)
+      if (fs.existsSync(target)) return json(res, 400, { error: `Already exists: ${path.basename(fromAbs)}` })
+      await fsp.rename(fromAbs, target)
+      const rel = target.slice(requireRoot().length + 1).split(path.sep).join('/')
+      return json(res, 200, { ok: true, to: rel })
+    }
+
     // --- global search across the workspace --------------------------------
     if (url.pathname === '/api/search' && req.method === 'GET') {
       const q = (url.searchParams.get('q') ?? '').trim()
