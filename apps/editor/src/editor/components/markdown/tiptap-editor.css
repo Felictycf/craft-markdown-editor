@@ -610,7 +610,8 @@
 }
 
 /* ============================================================================
-   TABLES
+   TABLES — Craft Agents "datatable" style: minimal card, horizontal
+   separators only, thin header, clickable links.
    ============================================================================ */
 
 .tiptap-prose table,
@@ -623,52 +624,51 @@
   border: 1px solid var(--foreground-10);
   border-radius: 10px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.55;
   color: var(--foreground-90);
 }
 
 .tiptap-prose th,
 .tiptap-prose td {
-  border-right: 1px solid var(--foreground-10);
-  border-bottom: 1px solid var(--foreground-10);
-  padding: 8px 12px;
-  min-width: 60px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--foreground-8);
   vertical-align: top;
   position: relative;
   text-align: left;
 }
 
-/* Outer frame owns the edge — drop the rightmost / bottom borders */
-.tiptap-prose th:last-child,
-.tiptap-prose td:last-child {
-  border-right: none;
-}
-
+/* Last row: no bottom separator (outer frame owns the edge) */
 .tiptap-prose tr:last-child th,
 .tiptap-prose tr:last-child td {
   border-bottom: none;
 }
 
-/* Header row */
+/* Header row — thin, muted, with a slightly stronger divider */
 .tiptap-prose th {
-  background: var(--foreground-10);
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.01em;
-  color: var(--foreground-80);
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--foreground-60);
+  background: var(--foreground-3);
   white-space: nowrap;
-  border-bottom: 1px solid var(--foreground-20);
-}
-
-/* Zebra striping on body rows */
-.tiptap-prose tbody tr:nth-child(even) td {
-  background: var(--foreground-5);
+  border-bottom: 1px solid var(--foreground-10);
 }
 
 /* Row hover */
 .tiptap-prose tbody tr:hover td {
-  background: var(--foreground-8);
+  background: var(--foreground-5);
+}
+
+/* Links inside tables (and the editor) */
+.tiptap-prose a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tiptap-prose a:hover {
+  text-decoration: underline;
 }
 
 /* Selected cells (cell selection drag) */

@@ -347,7 +347,10 @@ export function TiptapMarkdownEditor({
         OfficialMarkdown.configure({
           markedOptions: {
             gfm: true,
-          },
+            // Autolink bare URLs (e.g. URLs inside table cells) so they
+            // render as clickable links like the Craft Agents datatable.
+            linkify: true,
+          } as never,
         }),
       ]
     }
@@ -374,6 +377,17 @@ export function TiptapMarkdownEditor({
     editorProps: {
       attributes: {
         class: 'tiptap-prose outline-none',
+      },
+      // Open links in the default browser (web: window.open;
+      // Electron: routed to shell.openExternal by the window open handler).
+      handleClick: (_view, _pos, event) => {
+        const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a')
+        if (anchor?.href && editable) {
+          event.preventDefault()
+          window.open(anchor.href, '_blank', 'noopener')
+          return true
+        }
+        return false
       },
       handlePaste: (_view, event) => {
         if (!editable) return false
