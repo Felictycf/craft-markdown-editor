@@ -1,0 +1,17 @@
+{
+  "name": "craft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Craft — a pure markdown editor with instant rendering",
+  "type": "module",
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "dev:web": "cd apps/editor && bun run dev",
+    "dev:server": "bun server/index.ts",
+    "build": "cd apps/editor && bun run build",
+    "start": "bun run build && bun server/index.ts",
+    "typecheck": "cd apps/editor && bun run typecheck",
+    "app:start": "cd apps/editor && bun run build && cd ../desktop && bun run start",
+    "app:dist": "cd apps/editor && bun run build && cd ../desktop && CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist"
+  }
+}

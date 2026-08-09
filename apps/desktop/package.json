@@ -1,0 +1,38 @@
+{
+  "name": "craft",
+  "productName": "Craft Markdown",
+  "version": "0.1.0",
+  "description": "Craft Markdown — a pure markdown editor with instant rendering",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac",
+    "dist:dir": "electron-builder --mac --dir"
+  },
+  "devDependencies": {
+    "electron": "39.2.7",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ai.craft.markdown.editor",
+    "productName": "Craft Markdown",
+    "files": ["main.js", "preload.js"],
+    "extraResources": [
+      {
+        "from": "../editor/dist",
+        "to": "editor-dist"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.icns",
+      "target": ["dmg", "zip"],
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Craft Markdown",
+      "iconSize": 110
+    }
+  }
+}
