@@ -213,6 +213,48 @@ async function handleApi(req, res, url) {
       return json(res, 200, { ok: true })
     }
 
+    // --- global search across the workspace --------------------------------
+    if (url.pathname === '/api/search' && req.method === 'GET') {
+      const q = (url.searchParams.get('q') ?? '').trim()
+      if (!q) return json(res, 400, { error: 'Missing query' })
+      const needle = q.toLowerCase()
+      const results = []
+
+      const walk = async (dir) => {
+        const entries = await fsp.readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
+          const abs = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await walk(abs)
+            continue
+          }
+          const ext = path.extname(entry.name).toLowerCase()
+          if (ext !== '.md' && ext !== '.markdown') continue
+          const rel = abs.slice(requireRoot().length + 1).split(path.sep).join('/')
+          let text
+          try {
+            text = await fsp.readFile(abs, 'utf8')
+          } catch {
+            continue
+          }
+          const matches = []
+          text.split(/\r?\n/).forEach((line, idx) => {
+            if (line.toLowerCase().includes(needle)) {
+              matches.push({ line: idx + 1, text: line.trim().slice(0, 200) })
+            }
+          })
+          if (matches.length > 0) {
+            results.push({ path: rel, name: entry.name, matches: matches.slice(0, 100) })
+          }
+        }
+      }
+
+      await walk(requireRoot())
+      results.sort((a, b) => a.path.localeCompare(b.path))
+      return json(res, 200, { results })
+    }
+
     // --- workspace assets (images referenced from markdown) --------------
     if (url.pathname === '/api/assets' && req.method === 'GET') {
       const rel = url.searchParams.get('path')

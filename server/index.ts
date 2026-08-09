@@ -226,6 +226,49 @@ async function handleApi(req: Request): Promise<Response> {
       return json(200, { ok: true })
     }
 
+    // --- global search across the workspace --------------------------------
+    // GET /api/search?q=term → { results: [{ path, name, matches: [{line, text}] }] }
+    if (path === '/api/search' && req.method === 'GET') {
+      const q = (url.searchParams.get('q') ?? '').trim()
+      if (!q) return jsonError(400, 'Missing query')
+      const needle = q.toLowerCase()
+      const results: Array<{ path: string; name: string; matches: Array<{ line: number; text: string }> }> = []
+
+      const walk = async (dir: string): Promise<void> => {
+        const entries = await readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
+          const abs = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await walk(abs)
+            continue
+          }
+          const ext = extname(entry.name).toLowerCase()
+          if (ext !== '.md' && ext !== '.markdown') continue
+          const rel = abs.slice(requireRoot().length + 1).split(sep).join('/')
+          let text: string
+          try {
+            text = await readFile(abs, 'utf8')
+          } catch {
+            continue
+          }
+          const matches: Array<{ line: number; text: string }> = []
+          text.split(/\r?\n/).forEach((line, idx) => {
+            if (line.toLowerCase().includes(needle)) {
+              matches.push({ line: idx + 1, text: line.trim().slice(0, 200) })
+            }
+          })
+          if (matches.length > 0) {
+            results.push({ path: rel, name: entry.name, matches: matches.slice(0, 100) })
+          }
+        }
+      }
+
+      await walk(requireRoot())
+      results.sort((a, b) => a.path.localeCompare(b.path))
+      return json(200, { results })
+    }
+
     // --- workspace assets (images referenced from markdown) --------------
     // GET /api/assets?path=images/foo.png → serves the file from the workspace
     if (path === '/api/assets' && req.method === 'GET') {

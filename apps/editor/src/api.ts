@@ -85,6 +85,21 @@ export interface UploadResult {
   name: string
 }
 
+export interface SearchMatch {
+  line: number
+  text: string
+}
+
+export interface SearchResult {
+  path: string
+  name: string
+  matches: SearchMatch[]
+}
+
+export function searchFiles(query: string): Promise<{ results: SearchResult[] }> {
+  return request<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(query)}`)
+}
+
 /**
  * Upload an image to the workspace `images/` folder.
  * Returns the workspace-relative path (e.g. "images/foo.png") to reference

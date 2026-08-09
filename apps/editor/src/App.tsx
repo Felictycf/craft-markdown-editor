@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   Code2,
   Eye,
+  Search,
   FilePlus2,
   FolderPlus,
   FolderOpen,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 import { FileTree } from './components/FileTree'
 import { SourceEditor } from './components/SourceEditor'
+import { GlobalSearch } from './components/GlobalSearch'
 import { Dialog } from './components/Dialog'
 import { TiptapMarkdownEditor } from './editor/components/markdown/TiptapMarkdownEditor'
 import { PlatformProvider } from './editor/context/PlatformContext'
@@ -47,6 +49,8 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>('wysiwyg')
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [pendingSearch, setPendingSearch] = useState('')
   const [dark, setDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [error, setError] = useState('')
 
@@ -91,12 +95,16 @@ export default function App() {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  // Keyboard shortcuts: Cmd/Ctrl+S
+  // Keyboard shortcuts: Cmd/Ctrl+S, Cmd/Ctrl+Shift+F
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         void flushSave()
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setGlobalSearchOpen((o) => !o)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -377,6 +385,16 @@ export default function App() {
               {fileName && <span className="text-[13px] text-foreground/80 truncate">{fileName}</span>}
               <span className="flex-1" />
               <SaveIndicator state={saveState} />
+              <button
+                className={cn(
+                  'p-1.5 rounded-[6px] cursor-pointer',
+                  globalSearchOpen ? 'text-accent bg-accent/10' : 'text-foreground/60 hover:bg-foreground/[0.05]'
+                )}
+                onClick={() => setGlobalSearchOpen((o) => !o)}
+                title="Search workspace (Cmd+Shift+F)"
+              >
+                <Search className="w-4 h-4" />
+              </button>
               {openFile && (
                 <button
                   className={cn(
@@ -416,6 +434,7 @@ export default function App() {
                       content={content}
                       onUpdate={handleEditorUpdate}
                       placeholder="Start writing…"
+                      initialSearchText={pendingSearch}
                     />
                   )}
                 </div>
@@ -439,6 +458,16 @@ export default function App() {
         </div>
       </ShikiThemeProvider>
       {dialogNode}
+      {globalSearchOpen && (
+        <GlobalSearch
+          onOpenResult={(path, query) => {
+            setGlobalSearchOpen(false)
+            setPendingSearch(query)
+            void openFileByPath(path)
+          }}
+          onClose={() => setGlobalSearchOpen(false)}
+        />
+      )}
     </PlatformProvider>
   )
 }

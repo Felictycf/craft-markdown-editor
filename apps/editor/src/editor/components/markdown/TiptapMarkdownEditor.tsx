@@ -21,6 +21,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TableToolbar } from './TableToolbar'
+import { SearchAndReplace } from './SearchAndReplace'
 import { FullscreenOverlayBase } from '../overlay/FullscreenOverlayBase'
 import { TableKeymap } from './TableKeymap'
 import { cn } from '../../lib/utils'
@@ -285,6 +286,8 @@ export interface TiptapMarkdownEditorProps {
    * - `legacy`: tiptap-markdown (kept for reference)
    */
   markdownEngine?: MarkdownEngine
+  /** Preset search text — opens the find bar when provided (global search flow) */
+  initialSearchText?: string
 }
 
 export function TiptapMarkdownEditor({
@@ -294,6 +297,7 @@ export function TiptapMarkdownEditor({
   className,
   editable = true,
   markdownEngine = 'official',
+  initialSearchText,
 }: TiptapMarkdownEditorProps) {
   const onUpdateRef = React.useRef(onUpdate)
   onUpdateRef.current = onUpdate
@@ -573,6 +577,7 @@ export function TiptapMarkdownEditor({
       <EditorContent editor={editor} />
       {editor && editable && <TiptapBubbleMenus editor={editor} />}
       {editor && editable && <TableToolbar editor={editor} />}
+      {editor && editable && <SearchAndReplace editor={editor} initialText={initialSearchText} />}
       {previewSrc && (
         <FullscreenOverlayBase
           isOpen
