@@ -298,7 +298,7 @@ async function handleApi(req: Request): Promise<Response> {
       {
         const dirEntries = await readdir(dirAbs, { withFileTypes: true })
         const missing = dirEntries
-          .filter((en) => !en.name.startsWith('.') && !SKIP_DIRS.has(en.name) && !list.includes(en.name))
+          .filter((en) => !en.name.startsWith('.') && !SKIP_DIRS.has(en.name) && !list.includes(en.name) && en.name !== name)
           .map((en) => en.name)
           .sort((a, b) => a.localeCompare(b))
         list.push(...missing)

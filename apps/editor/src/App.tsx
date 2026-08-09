@@ -267,9 +267,13 @@ export default function App() {
   }, [loadTree, closeTab])
 
   const moveEntry = useCallback(
-    async (from: string, toDir: string) => {
+    async (
+      from: string,
+      toDir: string,
+      opts?: { anchor?: string; before?: boolean }
+    ) => {
       try {
-        const { to } = await api.moveEntry(from, toDir)
+        const { to } = await api.moveEntry(from, toDir, opts)
         // Keep tabs in sync: the moved entry (or its subtree) changes path
         setTabs((prev) =>
           prev.map((t) => {
@@ -424,7 +428,7 @@ export default function App() {
                 onNewFolder={(f) => setDialog({ type: 'newFolder', folder: f })}
                 onRename={(p) => setDialog({ type: 'rename', path: p, name: p.split('/').pop() ?? '' })}
                 onDelete={(p) => setDialog({ type: 'delete', path: p })}
-                onMove={(from, toDir) => void moveEntry(from, toDir)}
+                onMove={(from, toDir, opts) => void moveEntry(from, toDir, opts)}
               />
             </aside>
           )}
