@@ -32,6 +32,7 @@ type SlashIconName =
   | 'square-code'
   | 'workflow'
   | 'sigma'
+  | 'table'
 
 const LUCIDE_ICON_NODES: Record<SlashIconName, Array<[string, Record<string, string>]>> = {
   pilcrow: [
@@ -109,6 +110,13 @@ const LUCIDE_ICON_NODES: Record<SlashIconName, Array<[string, Record<string, str
   ],
   sigma: [
     ['path', { d: 'M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2' }],
+  ],
+  table: [
+    ['rect', { x: '3', y: '3', width: '18', height: '18', rx: '2' }],
+    ['path', { d: 'M3 9h18' }],
+    ['path', { d: 'M3 15h18' }],
+    ['path', { d: 'M9 3v18' }],
+    ['path', { d: 'M15 3v18' }],
   ],
 }
 
@@ -347,6 +355,35 @@ export function createSlashCommandItems(_editor: Editor): SlashCommandItem[] {
       aliases: ['latex', 'math', 'tex', 'katex'],
       run: (e, insertPos) => {
         insertRichBlockAndOpenEditor(e, 'latexBlock', 'E = mc^2', insertPos)
+      },
+    },
+    {
+      id: 'table',
+      title: 'Table',
+      description: 'Insert a 3×3 table',
+      icon: 'table',
+      group: 'Blocks',
+      aliases: ['表格', 'grid', 'cells', 'rows', 'columns'],
+      run: (e, insertPos) => {
+        // Trailing blank line => the table is always followed by an empty
+        // paragraph, so Cmd+End/Enter after the table lands OUTSIDE the cells.
+        const TABLE_MD = '|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n\n'
+        const { state } = e
+        // The command already deleted the "/table" text and moved the cursor;
+        // insertPos is a stale (pre-delete) coordinate, so use the live
+        // selection position instead.
+        const pos = state.selection.from
+        const $pos = state.doc.resolve(pos)
+        // If the current paragraph is empty, replace the whole paragraph with
+        // the table (inserting a block node INSIDE a paragraph corrupts the
+        // document — stray breaks/nested blocks + markdown serialization loop).
+        const emptyPara = $pos.parent.textContent.trim().length === 0
+        const range = emptyPara
+          ? { from: $pos.before(), to: $pos.after() }
+          : { from: pos, to: pos }
+        e.chain().focus().insertContentAt(range, TABLE_MD, { contentType: 'markdown' } as never).run()
+        // Move the cursor into the first cell so typing lands inside the table.
+        e.commands.setTextSelection(range.from + 1)
       },
     },
   ]

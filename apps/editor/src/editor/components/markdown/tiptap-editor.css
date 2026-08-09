@@ -151,7 +151,7 @@
 }
 
 .tiptap-hover-actions {
-  position: absolute;
+  position: fixed;
   top: 0.5rem;
   right: 0.5rem;
   z-index: 10;
@@ -607,4 +607,96 @@
   font-size: 12px;
   color: color-mix(in oklch, var(--foreground) 55%, transparent);
   padding: 8px;
+}
+
+/* ============================================================================
+   TABLES
+   ============================================================================ */
+
+.tiptap-prose table,
+.tiptap-prose .tiptap-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 0.75rem 0;
+}
+
+.tiptap-prose th,
+.tiptap-prose td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  min-width: 60px;
+  vertical-align: top;
+  position: relative;
+}
+
+.tiptap-table th {
+  background: var(--foreground-5);
+  font-weight: 600;
+  text-align: left;
+}
+
+.tiptap-prose .selectedCell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tiptap-prose table .column-resize-handle {
+  position: fixed;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  background-color: var(--accent);
+  pointer-events: none;
+}
+
+.tiptap-prose table .resize-cursor {
+  cursor: col-resize;
+}
+
+/* Table floating toolbar */
+.tiptap-table-toolbar {
+  position: fixed;
+  z-index: var(--z-tooltip, 150);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--popover);
+  box-shadow: var(--shadow-modal-small);
+  border: 1px solid var(--border);
+}
+
+.tiptap-table-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--foreground-60);
+  cursor: pointer;
+  background: transparent;
+}
+
+.tiptap-table-toolbar-btn:hover {
+  background: var(--foreground-10);
+  color: var(--foreground);
+}
+
+.tiptap-table-toolbar-btn.is-danger:hover {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+.tiptap-table-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 3px;
 }

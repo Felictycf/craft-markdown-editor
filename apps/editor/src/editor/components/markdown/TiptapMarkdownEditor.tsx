@@ -16,6 +16,12 @@ import { MermaidBlock } from './extensions/MermaidBlock'
 import { looksLikeMermaidSource } from './mermaid-source'
 import { LatexBlock } from './extensions/LatexBlock'
 import { RichBlockInteractions } from './extensions/RichBlockInteractions'
+import { Table } from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableHeader from '@tiptap/extension-table-header'
+import TableCell from '@tiptap/extension-table-cell'
+import { TableToolbar } from './TableToolbar'
+import { TableKeymap } from './TableKeymap'
 import { cn } from '../../lib/utils'
 import 'katex/dist/katex.min.css'
 import './tiptap-editor.css'
@@ -264,6 +270,14 @@ export function TiptapMarkdownEditor({
         },
       }),
       RichBlockInteractions,
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: { class: 'tiptap-table' },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TableKeymap,
       ...(editable ? [TiptapSlashMenu] : []),
     ]
 
@@ -338,12 +352,25 @@ export function TiptapMarkdownEditor({
         // Plain-text clipboard (no HTML): parse the pasted text as markdown so
         // headings, bold, lists, quotes and code fences render immediately.
         if (text.length > 0 && !event.clipboardData?.types?.includes('text/html')) {
-          const { from, to } = activeEditor.state.selection
-          activeEditor.commands.insertContentAt(
-            { from, to },
-            text,
-            { contentType: 'markdown' } as never
-          )
+          const { state } = activeEditor
+          const { from, to } = state.selection
+          // Block-level content (tables, code fences, …) pasted into an empty
+          // paragraph would be nested INSIDE the paragraph. Replace the whole
+          // empty paragraph instead so blocks land at top level.
+          if (to === from && state.doc.resolve(from).parent.textContent.trim().length === 0) {
+            const $from = state.doc.resolve(from)
+            activeEditor.commands.insertContentAt(
+              { from: $from.before(), to: $from.after() },
+              text,
+              { contentType: 'markdown' } as never
+            )
+          } else {
+            activeEditor.commands.insertContentAt(
+              { from, to },
+              text,
+              { contentType: 'markdown' } as never
+            )
+          }
           return true
         }
 
@@ -391,6 +418,12 @@ export function TiptapMarkdownEditor({
   // Sync content when the selected task changes (key prop handles this,
   // but as a safety net for direct content prop changes)
   const prevContentRef = React.useRef(content)
+
+  // Loop guard: some markdown round-trips are not byte-identical (e.g. table
+  // column padding), so setContent → onUpdate → serialize → setContent can
+  // oscillate. Once the content bounces too often in a short window, trust
+  // the editor's own state instead of force-resyncing it.
+  const syncGuardRef = React.useRef({ count: 0, windowStart: 0 })
   React.useEffect(() => {
     if (editor && content !== prevContentRef.current) {
       prevContentRef.current = content
@@ -399,6 +432,12 @@ export function TiptapMarkdownEditor({
       // local controlled echo and avoid setContent resets that can collapse transient
       // block states (e.g. slash-inserted code blocks) and jump selection.
       if (editor.isFocused) return
+
+      const now = Date.now()
+      if (now - syncGuardRef.current.windowStart > 1000) {
+        syncGuardRef.current = { count: 0, windowStart: now }
+      }
+      if (++syncGuardRef.current.count > 3) return
 
       const currentMd = useOfficialMarkdown
         ? postprocessMarkdownFromOfficial(getOfficialMarkdown(editor as { getMarkdown?: () => string }))
@@ -425,6 +464,7 @@ export function TiptapMarkdownEditor({
     <div className={cn('tiptap-editor', className)}>
       <EditorContent editor={editor} />
       {editor && editable && <TiptapBubbleMenus editor={editor} />}
+      {editor && editable && <TableToolbar editor={editor} />}
     </div>
   )
 }
