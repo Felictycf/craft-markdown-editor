@@ -87,9 +87,8 @@ export function FileTree({
 
   /**
    * Decide the drop zone from the cursor position inside a row:
-   * - folders: top/bottom 25% → insertion line (move to the folder's parent),
-   *   middle → move INTO the folder (folder highlights)
-   * - files: always an insertion line (before/after)
+   * - folders: the whole row → move INTO the folder (folder highlights)
+   * - files: an insertion line (before/after) → move to that file's folder
    */
   const handleRowDragOver = useCallback(
     (e: React.DragEvent, node: TreeNode) => {
@@ -97,13 +96,11 @@ export function FileTree({
       e.preventDefault()
       e.stopPropagation()
       e.dataTransfer.dropEffect = 'move'
-      const rect = e.currentTarget.getBoundingClientRect()
-      const rel = (e.clientY - rect.top) / rect.height
       if (node.type === 'folder') {
-        if (rel < 0.25) setDropTarget({ kind: 'line', path: node.path, pos: 'before' })
-        else if (rel > 0.75) setDropTarget({ kind: 'line', path: node.path, pos: 'after' })
-        else setDropTarget({ kind: 'folder', path: node.path })
+        setDropTarget({ kind: 'folder', path: node.path })
       } else {
+        const rect = e.currentTarget.getBoundingClientRect()
+        const rel = (e.clientY - rect.top) / rect.height
         setDropTarget({ kind: 'line', path: node.path, pos: rel < 0.5 ? 'before' : 'after' })
       }
     },
@@ -118,15 +115,11 @@ export function FileTree({
       setDropTarget(null)
       setDragPath(null)
       if (!from) return
-      // Recompute the drop zone from the event position — the dropTarget
-      // state can be stale during fast drags.
-      const rect = e.currentTarget.getBoundingClientRect()
-      const rel = (e.clientY - rect.top) / rect.height
-      if (node.type === 'folder' && rel >= 0.25 && rel <= 0.75) {
-        // Drop in the folder's middle → move INTO it
+      if (node.type === 'folder') {
+        // Drop on a folder → move INTO it
         if (from !== node.path) onMove(from, node.path)
       } else {
-        // Drop near a row edge → move to that row's parent folder
+        // Drop on a file → move to that file's parent folder
         const parent = dirOf(node.path)
         if (from !== parent) onMove(from, parent)
       }
