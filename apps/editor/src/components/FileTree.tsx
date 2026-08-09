@@ -158,6 +158,7 @@ export function FileTree({
           {isLineBefore && <DropLine />}
           <div
             role="treeitem"
+            data-name={node.name}
             draggable
             onDragStart={(e) => handleDragStart(e, node)}
             onDragEnter={(e) => handleRowDragOver(e, node)}

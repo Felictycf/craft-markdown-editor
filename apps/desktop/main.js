@@ -560,6 +560,112 @@ app.whenReady().then(() => {
   })
 })
 
+/**
+ * Self-test: CRAFT_DRAG_TEST="srcText|dstText" drives a REAL drag & drop
+ * through the Chrome DevTools Protocol (same sequence Playwright uses),
+ * which Chromium recognizes as a genuine HTML5 drag.
+ */
+async function runDragTest() {
+  const spec = process.env.CRAFT_DRAG_TEST || ''
+  const [srcText, dstText] = spec.split('|')
+  const wc = mainWindow.webContents
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const send = (method, params) => wc.debugger.sendCommand(method, params)
+
+  try {
+    wc.debugger.attach('1.3')
+    await wait(2000)
+
+    // Log which drag events actually fire in the page
+    await wc.executeJavaScript(`
+      window.__dragLog = [];
+      ['dragstart','dragenter','dragover','dragleave','drop','dragend'].forEach(t =>
+        document.addEventListener(t, e => window.__dragLog.push(t + '@' + (e.target.closest ? (e.target.closest('[role=treeitem]')?.textContent.slice(0,12) || 'bg') : '?')), true)
+      );
+    `)
+
+    // Expand docs folder so its children are visible
+    await wc.executeJavaScript(
+      `Array.from(document.querySelectorAll('[role=treeitem]')).find(el => el.textContent.includes('docs'))?.click()`
+    )
+    await wait(600)
+
+    const rects = await wc.executeJavaScript(`(() => {
+      const rows = Array.from(document.querySelectorAll('[role=treeitem]'));
+      const src = rows.find(el => el.getAttribute('data-name') === ${JSON.stringify(srcText)});
+      const dst = rows.find(el => el.getAttribute('data-name') === ${JSON.stringify(dstText)});
+      if (!src || !dst) return null;
+      const s = src.getBoundingClientRect();
+      const d = dst.getBoundingClientRect();
+      return { sx: s.x + s.width / 2, sy: s.y + s.height / 2, dx: d.x + 15, dy: d.y + d.height * 0.8 };
+    })()`)
+    if (!rects) {
+      console.log('[craft] drag test: rows not found')
+      return
+    }
+
+    // Playwright-style sequence:
+    // 1) hover source, press, move with button held (starts the drag)
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rects.sx, y: rects.sy })
+    await send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: rects.sx, y: rects.sy, button: 'left', buttons: 1, clickCount: 1,
+    })
+    for (let i = 1; i <= 8; i++) {
+      const x = rects.sx + ((rects.dx - rects.sx) * i) / 8
+      const y = rects.sy + ((rects.dy - rects.sy) * i) / 8
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x, y, button: 'left', buttons: 1,
+      })
+      await wait(40)
+    }
+    // 2) dragEnter/dragOver with empty drag data (payload travels via our ref)
+    const dragData = { items: [], dragOperationsMask: 1 }
+    await send('Input.dispatchDragEvent', { type: 'dragEnter', x: rects.dx, y: rects.dy, data: dragData })
+    await send('Input.dispatchDragEvent', { type: 'dragOver', x: rects.dx, y: rects.dy, data: dragData })
+    await wait(200)
+    // 3) drop via mouse release
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: rects.dx, y: rects.dy, button: 'left', clickCount: 1,
+    })
+    await wait(2000)
+
+    const dragLog = await wc.executeJavaScript('window.__dragLog ? window.__dragLog.join(" | ") : "no log"')
+    console.log('[craft] drag events:', dragLog)
+
+    // Direct API probe: does the Electron server's /api/move reorder work?
+    const probe = await wc.executeJavaScript(`fetch('/api/move', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'docs/a.md', toDir: 'docs', anchor: 'b.md', before: false })
+    }).then(r => r.json())`)
+    console.log('[craft] api probe:', JSON.stringify(probe))
+
+    const result = await wc.executeJavaScript(`fetch('/api/tree').then(r => r.json()).then(d => {
+      const names = [];
+      const walk = (nodes) => nodes.forEach(n => { names.push(n.path); if (n.children) walk(n.children); });
+      walk(d);
+      return names.join(',');
+    })`)
+    console.log('[craft] drag test paths:', result)
+
+    const img = await wc.capturePage()
+    fs.writeFileSync('/tmp/craft-drag-test.png', img.toPNG())
+    console.log('[craft] drag test screenshot saved')
+  } catch (err) {
+    console.error('[craft] drag test failed:', err)
+  } finally {
+    try { wc.debugger.detach() } catch {}
+    app.exit(0)
+  }
+}
+
+if (process.env.CRAFT_DRAG_TEST) {
+  app.whenReady().then(() => {
+    setTimeout(() => {
+      if (mainWindow) void runDragTest()
+    }, 1500)
+  })
+}
+
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
