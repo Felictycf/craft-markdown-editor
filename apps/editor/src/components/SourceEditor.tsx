@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useImperativeHandle, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorView, keymap } from '@codemirror/view'
@@ -52,15 +52,34 @@ const markdownHighlight = HighlightStyle.define([
   { tag: t.invalid, color: 'var(--destructive)' },
 ])
 
-export function SourceEditor({
-  value,
-  onChange,
-  onTabIntoWysiwyg,
-}: {
-  value: string
-  onChange: (md: string) => void
-  onTabIntoWysiwyg: () => void
-}) {
+export interface SourceEditorHandle {
+  /** Scroll to a 1-based source line and focus the editor */
+  scrollToLine: (line: number) => void
+}
+
+export const SourceEditor = React.forwardRef<
+  SourceEditorHandle,
+  {
+    value: string
+    onChange: (md: string) => void
+    onTabIntoWysiwyg: () => void
+  }
+>(function SourceEditor({ value, onChange, onTabIntoWysiwyg }, ref) {
+  const viewRef = useRef<EditorView | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    scrollToLine: (line) => {
+      const view = viewRef.current
+      if (!view || view.state.doc.lines < line) return
+      const pos = view.state.doc.line(line).from
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 24 }),
+      })
+      view.focus()
+    },
+  }), [])
+
   const handleChange = useCallback(
     (val: string) => {
       onChange(val)
@@ -72,6 +91,9 @@ export function SourceEditor({
     <CodeMirror
       value={value}
       onChange={handleChange}
+      onCreateEditor={(view) => {
+        viewRef.current = view
+      }}
       height="100%"
       placeholder="Markdown source…"
       basicSetup={{
@@ -109,4 +131,4 @@ export function SourceEditor({
       ]}
     />
   )
-}
+})

@@ -16,6 +16,7 @@ import { MermaidBlock } from './extensions/MermaidBlock'
 import { looksLikeMermaidSource } from './mermaid-source'
 import { LatexBlock } from './extensions/LatexBlock'
 import { RichBlockInteractions } from './extensions/RichBlockInteractions'
+import { TocFlash, tocFlashPluginKey } from './extensions/TocFlash'
 import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
@@ -269,6 +270,16 @@ async function handleDroppedOrPastedFiles(
   }
 }
 
+export interface TiptapMarkdownEditorHandle {
+  /**
+   * Scroll the editor to a heading identified by its outline position.
+   * Matching is by (level, same-level occurrence); when the doc no longer
+   * contains that exact heading (e.g. it was edited away), falls back to the
+   * closest preceding heading in document order.
+   */
+  scrollToHeading: (heading: { level: number; occurrence: number; globalIndex: number }) => void
+}
+
 export interface TiptapMarkdownEditorProps {
   /** Markdown string content */
   content: string
@@ -290,15 +301,21 @@ export interface TiptapMarkdownEditorProps {
   initialSearchText?: string
 }
 
-export function TiptapMarkdownEditor({
-  content,
-  onUpdate,
-  placeholder = 'Write something...',
-  className,
-  editable = true,
-  markdownEngine = 'official',
-  initialSearchText,
-}: TiptapMarkdownEditorProps) {
+export const TiptapMarkdownEditor = React.forwardRef<
+  TiptapMarkdownEditorHandle,
+  TiptapMarkdownEditorProps
+>(function TiptapMarkdownEditor(
+  {
+    content,
+    onUpdate,
+    placeholder = 'Write something...',
+    className,
+    editable = true,
+    markdownEngine = 'official',
+    initialSearchText,
+  },
+  ref,
+) {
   const onUpdateRef = React.useRef(onUpdate)
   onUpdateRef.current = onUpdate
 
@@ -346,6 +363,7 @@ export function TiptapMarkdownEditor({
         },
       }),
       RichBlockInteractions,
+      TocFlash,
       Table.configure({
         resizable: true,
         HTMLAttributes: { class: 'tiptap-table' },
@@ -519,6 +537,43 @@ export function TiptapMarkdownEditor({
   // Keep editorRef in sync for the Mathematics onClick callback
   editorRef.current = editor
 
+  // Outline navigation API: scroll to a heading from the document outline.
+  React.useImperativeHandle(ref, () => ({
+    scrollToHeading: ({ level, occurrence, globalIndex }) => {
+      const e = editorRef.current
+      if (!e || e.isDestroyed) return
+
+      const entries: Array<{ pos: number; level: number; occurrence: number }> = []
+      const occByLevel: Record<number, number> = {}
+      e.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading') {
+          const lvl = node.attrs.level as number
+          const occ = occByLevel[lvl] ?? 0
+          occByLevel[lvl] = occ + 1
+          entries.push({ pos, level: lvl, occurrence: occ })
+        }
+        return true
+      })
+      if (entries.length === 0) return
+
+      const target =
+        entries.find((en) => en.level === level && en.occurrence === occurrence) ??
+        entries[Math.min(globalIndex, entries.length - 1)]
+
+      const dom = e.view.nodeDOM(target.pos) as HTMLElement | null
+      if (!dom) return
+      dom.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+      // Flash via ProseMirror decoration (external class mutations on
+      // ProseMirror-managed DOM get reverted by its DOM observer).
+      e.view.dispatch(e.state.tr.setMeta(tocFlashPluginKey, { pos: target.pos }))
+      setTimeout(() => {
+        if (!e.isDestroyed) {
+          e.view.dispatch(e.state.tr.setMeta(tocFlashPluginKey, { clear: true }))
+        }
+      }, 1600)
+    },
+  }), [])
 
   // Sync editable prop
   React.useEffect(() => {
@@ -596,4 +651,4 @@ export function TiptapMarkdownEditor({
       )}
     </div>
   )
-}
+})

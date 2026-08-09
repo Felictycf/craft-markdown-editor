@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft,
   Code2,
   Eye,
+  ListTree,
   Search,
   FilePlus2,
   FolderPlus,
@@ -17,7 +18,12 @@ import { FileTree } from './components/FileTree'
 import { SourceEditor } from './components/SourceEditor'
 import { GlobalSearch } from './components/GlobalSearch'
 import { Dialog } from './components/Dialog'
+import { DocumentOutline } from './components/DocumentOutline'
+import { extractOutline } from './components/outline'
+import type { OutlineHeading } from './components/outline'
 import { TiptapMarkdownEditor } from './editor/components/markdown/TiptapMarkdownEditor'
+import type { TiptapMarkdownEditorHandle } from './editor/components/markdown/TiptapMarkdownEditor'
+import type { SourceEditorHandle } from './components/SourceEditor'
 import { PlatformProvider } from './editor/context/PlatformContext'
 import { ShikiThemeProvider } from './editor/context/ShikiThemeContext'
 import * as api from './api'
@@ -57,6 +63,8 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const [activeHeading, setActiveHeading] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('wysiwyg')
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [pendingSearch, setPendingSearch] = useState('')
@@ -71,8 +79,84 @@ export default function App() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tabsRef = useRef<Tab[]>([])
   const activePathRef = useRef<string | null>(null)
+  const mainRef = useRef<HTMLElement | null>(null)
+  const editorRef = useRef<TiptapMarkdownEditorHandle | null>(null)
+  const sourceRef = useRef<SourceEditorHandle | null>(null)
   tabsRef.current = tabs
   activePathRef.current = activePath
+
+  // Document outline (TOC): headings of the active tab, recomputed on edit.
+  const outline = useMemo(
+    () => (openFile ? extractOutline(content) : []),
+    [openFile, content]
+  )
+
+  // Active heading tracking: the last heading above the scroll offset in the
+  // main column. Queries real DOM (WYSIWYG h1–h6 / CodeMirror .cm-line).
+  const computeActiveHeading = useCallback(() => {
+    const container = mainRef.current
+    if (!container || !openFile) {
+      setActiveHeading(null)
+      return
+    }
+    const headY = 40
+    const occByLevel: Record<number, number> = {}
+    const candidates: Array<{ id: string; top: number }> = []
+
+    const consider = (el: HTMLElement, level: number) => {
+      const id = `${level}:${occByLevel[level] ?? 0}`
+      occByLevel[level] = (occByLevel[level] ?? 0) + 1
+      const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top
+      if (top <= headY) candidates.push({ id, top })
+    }
+
+    if (viewModeRef.current === 'source') {
+      container.querySelectorAll<HTMLElement>('.cm-line').forEach((el) => {
+        const m = (el.textContent ?? '').match(/^\s*(#{1,6})\s+(.+)$/)
+        if (m) consider(el, m[1].length)
+      })
+    } else {
+      container
+        .querySelectorAll<HTMLElement>('.tiptap-prose h1, .tiptap-prose h2, .tiptap-prose h3, .tiptap-prose h4, .tiptap-prose h5, .tiptap-prose h6')
+        .forEach((el) => consider(el, parseInt(el.tagName[1], 10)))
+    }
+
+    let best: { id: string; top: number } | null = null
+    for (const c of candidates) {
+      if (best === null || c.top > best.top) best = c
+    }
+    setActiveHeading(best?.id ?? null)
+  }, [openFile])
+
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
+
+  // Recompute the active heading after renders that change layout/scroll
+  // (file switch, view mode toggle, content updates, outline open/close).
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => computeActiveHeading())
+    return () => cancelAnimationFrame(raf)
+  }, [computeActiveHeading, viewMode, outlineOpen, activePath, content])
+
+  // Drop stale active ids when headings change (e.g. a heading was edited away).
+  useEffect(() => {
+    if (activeHeading && !outline.some((h) => h.id === activeHeading)) {
+      setActiveHeading(null)
+    }
+  }, [outline, activeHeading])
+
+  const handleOutlineNavigate = useCallback((h: OutlineHeading) => {
+    setActiveHeading(h.id)
+    if (viewModeRef.current === 'source') {
+      sourceRef.current?.scrollToLine(h.line)
+    } else {
+      editorRef.current?.scrollToHeading({
+        level: h.level,
+        occurrence: h.occurrence,
+        globalIndex: h.globalIndex,
+      })
+    }
+  }, [])
 
   const flushSave = useCallback(async () => {
     if (saveTimer.current) {
@@ -462,6 +546,17 @@ export default function App() {
               >
                 <Search className="w-4 h-4" />
               </button>
+              <button
+                className={cn(
+                  'p-1.5 rounded-[6px] cursor-pointer disabled:opacity-40 disabled:cursor-default',
+                  outlineOpen ? 'text-accent bg-accent/10' : 'text-foreground/60 hover:bg-foreground/[0.05]'
+                )}
+                onClick={() => setOutlineOpen((o) => !o)}
+                title="Toggle outline (TOC)"
+                disabled={!openFile}
+              >
+                <ListTree className="w-4 h-4" />
+              </button>
               {openFile && (
                 <button
                   className={cn(
@@ -501,17 +596,23 @@ export default function App() {
             )}
 
             {/* Editor */}
-            <main className="flex-1 min-h-0 overflow-y-auto">
+            <main
+              ref={mainRef}
+              className="flex-1 min-h-0 overflow-y-auto"
+              onScroll={computeActiveHeading}
+            >
               {openFile ? (
                 <div className="max-w-[760px] mx-auto px-8 py-8">
                   {viewMode === 'source' ? (
                     <SourceEditor
+                      ref={sourceRef}
                       value={content}
                       onChange={handleEditorUpdate}
                       onTabIntoWysiwyg={() => setViewMode('wysiwyg')}
                     />
                   ) : (
                     <TiptapMarkdownEditor
+                      ref={editorRef}
                       key={openFile}
                       content={content}
                       onUpdate={handleEditorUpdate}
@@ -537,6 +638,16 @@ export default function App() {
               </footer>
             )}
           </div>
+
+          {/* Outline (TOC) */}
+          {outlineOpen && openFile && (
+            <DocumentOutline
+              headings={outline}
+              activeId={activeHeading}
+              onNavigate={handleOutlineNavigate}
+              onClose={() => setOutlineOpen(false)}
+            />
+          )}
         </div>
       </ShikiThemeProvider>
       {dialogNode}

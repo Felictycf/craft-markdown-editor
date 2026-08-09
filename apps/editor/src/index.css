@@ -328,3 +328,8 @@
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
+
+.craft-outline {
+  background: var(--background-elevated);
+  border-left: 1px solid var(--border);
+}

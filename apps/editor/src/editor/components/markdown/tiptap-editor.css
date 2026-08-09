@@ -818,3 +818,13 @@
   border-radius: 2px;
   box-shadow: 0 0 0 1px var(--accent);
 }
+
+/* Outline navigation flash: briefly highlight the jumped-to heading */
+.tiptap-prose .toc-flash {
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 30%, transparent);
+  transition:
+    background-color 1.5s ease-out,
+    box-shadow 1.5s ease-out;
+}
