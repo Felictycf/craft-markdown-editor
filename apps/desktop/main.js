@@ -212,6 +212,45 @@ async function handleApi(req, res, url) {
       await fsp.rename(safeResolve(body.from), toAbs)
       return json(res, 200, { ok: true })
     }
+
+    // --- workspace assets (images referenced from markdown) --------------
+    if (url.pathname === '/api/assets' && req.method === 'GET') {
+      const rel = url.searchParams.get('path')
+      if (!rel) return json(res, 400, { error: 'Missing path' })
+      const abs = safeResolve(rel)
+      const info = await fsp.stat(abs)
+      if (!info.isFile()) return json(res, 404, { error: 'Not a file' })
+      const ext = path.extname(abs).toLowerCase()
+      const body = await fsp.readFile(abs)
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] ?? 'application/octet-stream',
+        'Cache-Control': 'private, max-age=3600',
+      })
+      res.end(body)
+      return
+    }
+
+    // --- image upload (paste/drop into the editor) -----------------------
+    if (url.pathname === '/api/upload' && req.method === 'POST') {
+      const body = await readBody(req)
+      if (!body.filename || !body.dataBase64) return json(res, 400, { error: 'Missing filename/data' })
+      const clean = String(body.filename).replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '')
+      if (!clean) return json(res, 400, { error: 'Invalid filename' })
+      const imagesDir = path.join(requireRoot(), 'images')
+      await fsp.mkdir(imagesDir, { recursive: true })
+      let name = clean
+      let counter = 1
+      while (fs.existsSync(path.join(imagesDir, name))) {
+        const dot = clean.lastIndexOf('.')
+        const base = dot > 0 ? clean.slice(0, dot) : clean
+        const ext = dot > 0 ? clean.slice(dot) : ''
+        name = `${base}-${counter}${ext}`
+        counter += 1
+      }
+      const data = Buffer.from(body.dataBase64, 'base64')
+      await fsp.writeFile(path.join(imagesDir, name), data)
+      return json(res, 200, { path: `images/${name}`, name })
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('ENOENT')) return json(res, 404, { error: 'File not found' })

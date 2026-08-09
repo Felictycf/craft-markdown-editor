@@ -5,7 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from './extensions/AnimatedTaskItem'
 import { Mathematics } from '@tiptap/extension-mathematics'
-import Image from '@tiptap/extension-image'
+import { CraftImage, resolveImageSrc } from './CraftImage'
 import FileHandler from '@tiptap/extension-file-handler'
 import { Markdown as OfficialMarkdown } from '@tiptap/markdown'
 import { Markdown as LegacyMarkdown } from 'tiptap-markdown'
@@ -21,6 +21,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TableToolbar } from './TableToolbar'
+import { FullscreenOverlayBase } from '../overlay/FullscreenOverlayBase'
 import { TableKeymap } from './TableKeymap'
 import { cn } from '../../lib/utils'
 import 'katex/dist/katex.min.css'
@@ -136,6 +137,29 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/**
+ * Upload an image to the workspace `images/` folder and return the
+ * workspace-relative path (e.g. "images/foo.png"). Falls back to a base64
+ * data URL when the upload fails (e.g. no workspace open in browser mode).
+ */
+async function saveImageToWorkspace(file: File): Promise<string> {
+  try {
+    const dataUrl = await readFileAsDataUrl(file)
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name || 'image.png', dataBase64: base64 }),
+    })
+    if (!res.ok) throw new Error(`upload failed: ${res.status}`)
+    const { path } = (await res.json()) as { path: string }
+    return path
+  } catch {
+    return await readFileAsDataUrl(file)
+  }
+}
+
+
 async function readImageDimensions(src: string): Promise<{ width: number; height: number } | null> {
   return await new Promise((resolve) => {
     const image = new globalThis.Image()
@@ -230,8 +254,8 @@ async function handleDroppedOrPastedFiles(
 ): Promise<void> {
   for (const file of files) {
     if (file.type.startsWith('image/')) {
-      const src = await readFileAsDataUrl(file)
-      const dimensions = await readImageDimensions(src)
+      const src = await saveImageToWorkspace(file)
+      const dimensions = await readImageDimensions(resolveImageSrc(src))
       insertImageNode(editor, src, pos, dimensions)
       continue
     }
@@ -280,6 +304,9 @@ export function TiptapMarkdownEditor({
 
   const useOfficialMarkdown = markdownEngine === 'official'
 
+  // Fullscreen preview for images (click an image to open it).
+  const [previewSrc, setPreviewSrc] = React.useState<string | null>(null)
+
   const extensions = React.useMemo(() => {
     const base = [
       StarterKit.configure({
@@ -300,7 +327,7 @@ export function TiptapMarkdownEditor({
         themes: { light: 'github-light', dark: 'github-dark' },
       }),
       Placeholder.configure({ placeholder }),
-      Image.configure({
+      CraftImage.configure({
         inline: false,
         allowBase64: true,
       }),
@@ -380,11 +407,20 @@ export function TiptapMarkdownEditor({
       },
       // Open links in the default browser (web: window.open;
       // Electron: routed to shell.openExternal by the window open handler).
+      // Clicking an image opens a fullscreen preview.
       handleClick: (_view, _pos, event) => {
-        const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a')
-        if (anchor?.href && editable) {
+        if (!editable) return false
+        const target = event.target as HTMLElement | null
+        const anchor = target?.closest<HTMLAnchorElement>('a')
+        if (anchor?.href) {
           event.preventDefault()
           window.open(anchor.href, '_blank', 'noopener')
+          return true
+        }
+        const img = target?.closest<HTMLImageElement>('img')
+        if (img?.src) {
+          event.preventDefault()
+          setPreviewSrc(img.src)
           return true
         }
         return false
@@ -537,6 +573,22 @@ export function TiptapMarkdownEditor({
       <EditorContent editor={editor} />
       {editor && editable && <TiptapBubbleMenus editor={editor} />}
       {editor && editable && <TableToolbar editor={editor} />}
+      {previewSrc && (
+        <FullscreenOverlayBase
+          isOpen
+          onClose={() => setPreviewSrc(null)}
+          accessibleTitle="Image preview"
+          className="bg-black/90"
+        >
+          <div className="flex items-center justify-center h-full p-10">
+            <img
+              src={previewSrc}
+              alt=""
+              className="max-w-full max-h-full rounded-lg shadow-2xl"
+            />
+          </div>
+        </FullscreenOverlayBase>
+      )}
     </div>
   )
 }

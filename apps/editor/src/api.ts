@@ -79,3 +79,20 @@ export function renameEntry(from: string, to: string): Promise<{ ok: true }> {
     body: JSON.stringify({ from, to }),
   })
 }
+
+export interface UploadResult {
+  path: string
+  name: string
+}
+
+/**
+ * Upload an image to the workspace `images/` folder.
+ * Returns the workspace-relative path (e.g. "images/foo.png") to reference
+ * from markdown.
+ */
+export function uploadImage(filename: string, dataBase64: string): Promise<UploadResult> {
+  return request<UploadResult>('/api/upload', {
+    method: 'POST',
+    body: JSON.stringify({ filename, dataBase64 }),
+  })
+}

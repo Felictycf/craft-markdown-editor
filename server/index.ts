@@ -225,6 +225,45 @@ async function handleApi(req: Request): Promise<Response> {
       await rename(fromAbs, toAbs)
       return json(200, { ok: true })
     }
+
+    // --- workspace assets (images referenced from markdown) --------------
+    // GET /api/assets?path=images/foo.png → serves the file from the workspace
+    if (path === '/api/assets' && req.method === 'GET') {
+      const rel = url.searchParams.get('path')
+      if (!rel) return jsonError(400, 'Missing path')
+      const abs = safeResolve(rel)
+      const info = await stat(abs)
+      if (!info.isFile()) return jsonError(404, 'Not a file')
+      const ext = extname(abs).toLowerCase()
+      const body = await readFile(abs)
+      return new Response(body, {
+        headers: { 'Content-Type': MIME[ext] ?? 'application/octet-stream', 'Cache-Control': 'private, max-age=3600' },
+      })
+    }
+
+    // --- image upload (paste/drop into the editor) -----------------------
+    // POST /api/upload { filename, dataBase64, mime } → saves to images/
+    if (path === '/api/upload' && req.method === 'POST') {
+      const body = (await req.json()) as { filename?: string; dataBase64?: string; mime?: string }
+      if (!body.filename || !body.dataBase64) return jsonError(400, 'Missing filename/data')
+      const clean = body.filename.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '')
+      if (!clean) return jsonError(400, 'Invalid filename')
+      const imagesDir = join(requireRoot(), 'images')
+      await mkdir(imagesDir, { recursive: true })
+      // De-duplicate names (foo.png, foo-1.png, …)
+      let name = clean
+      let counter = 1
+      while (existsSync(join(imagesDir, name))) {
+        const dot = clean.lastIndexOf('.')
+        const base = dot > 0 ? clean.slice(0, dot) : clean
+        const ext = dot > 0 ? clean.slice(dot) : ''
+        name = `${base}-${counter}${ext}`
+        counter += 1
+      }
+      const data = Buffer.from(body.dataBase64, 'base64')
+      await writeFile(join(imagesDir, name), data)
+      return json(200, { path: `images/${name}`, name })
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('ENOENT')) return jsonError(404, 'File not found')
