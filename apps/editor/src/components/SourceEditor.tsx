@@ -94,6 +94,9 @@ export const SourceEditor = React.forwardRef<
       onCreateEditor={(view) => {
         viewRef.current = view
       }}
+      // Don't let @uiw inject its default light theme (white background) —
+      // the app theme + baseTheme below are the source of truth.
+      theme="none"
       height="100%"
       placeholder="Markdown source…"
       basicSetup={{
