@@ -73,13 +73,30 @@ export function FileTree({
     e.dataTransfer.setData('text/craft-path', node.path)
     e.dataTransfer.effectAllowed = 'move'
     setDragPath(node.path)
+    // Custom drag ghost: a small label following the cursor so you can
+    // always see WHAT you are dragging.
+    const ghost = document.createElement('div')
+    ghost.textContent = node.name
+    ghost.style.cssText =
+      'padding:4px 10px;border-radius:8px;font:500 12px system-ui,sans-serif;' +
+      'color:#fff;background:var(--accent);box-shadow:0 4px 12px rgba(0,0,0,.25);' +
+      'pointer-events:none;white-space:nowrap;'
+    document.body.appendChild(ghost)
+    e.dataTransfer.setDragImage(ghost, 8, 8)
+    setTimeout(() => ghost.remove(), 0)
   }, [])
+
+  const isDragPayload = (e: React.DragEvent): boolean =>
+    Array.from(e.dataTransfer.types).includes('text/craft-path')
 
   const handleDragOver = useCallback(
     (e: React.DragEvent, node: TreeNode | null) => {
-      if (!dragPath) return
+      if (!isDragPayload(e)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = 'move'
+      // Track the drop zone under the cursor:
+      // - over a folder row → that folder
+      // - anywhere else in the tree (background) → workspace root
       setDropTarget(node ? node.path : '')
     },
     [dragPath]
@@ -107,6 +124,7 @@ export function FileTree({
       const isSelected = !isFolder && node.path === openFile
       const isEditable = !isFolder && !!node.editable
       const isDropTarget = isFolder && dropTarget === node.path
+      const isDragging = dragPath === node.path
 
       return (
         <div key={node.path}>
@@ -114,15 +132,35 @@ export function FileTree({
             role="treeitem"
             draggable
             onDragStart={(e) => handleDragStart(e, node)}
-            onDragOver={(e) => handleDragOver(e, isFolder ? node : null)}
-            onDragLeave={() => isFolder && setDropTarget((d) => (d === node.path ? null : d))}
+            onDragEnter={(e) => {
+              if (isFolder && isDragPayload(e)) {
+                e.stopPropagation()
+                setDropTarget(node.path)
+              }
+            }}
+            onDragOver={(e) => {
+              if (isFolder && isDragPayload(e)) {
+                e.stopPropagation()
+              }
+              handleDragOver(e, isFolder ? node : null)
+            }}
+            onDragLeave={(e) => {
+              if (isFolder && isDragPayload(e) && !e.currentTarget.contains(e.relatedTarget as Node)) {
+                setDropTarget((d) => (d === node.path ? null : d))
+              }
+            }}
             onDrop={(e) => handleDrop(e, isFolder ? node : null)}
             className={cn(
               'group flex items-center gap-1 h-7 pr-2 cursor-pointer select-none',
               'text-[13px] rounded-[6px] mx-1',
               isSelected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/70 hover:bg-foreground/[0.03] hover:text-foreground',
+              // Dragging state: the source row fades so it's obvious you're
+              // holding it.
+              isDragging && 'opacity-40',
+              // Drop-zone state: accent fill + left bar + ring so the target
+              // folder is unmistakable.
               isDropTarget &&
-                'bg-accent/15 text-foreground ring-1 ring-inset ring-accent/60'
+                'bg-accent/20 text-foreground ring-1 ring-inset ring-accent/70 shadow-[inset_2px_0_0_0_var(--accent)]'
             )}
             style={{ paddingLeft: 8 + depth * 14 }}
             onClick={() => (isFolder ? onToggle(node.path) : onOpenFile(node.path))}
@@ -159,19 +197,29 @@ export function FileTree({
         </div>
       )
     },
-    [expanded, openFile, onToggle, onOpenFile, openMenu, dropTarget, handleDragOver, handleDragStart, handleDrop]
+    [expanded, openFile, onToggle, onOpenFile, openMenu, dropTarget, dragPath, handleDragOver, handleDragStart, handleDrop]
   )
 
   return (
     <div
       className="flex-1 overflow-y-auto py-1"
       role="tree"
+      onDragEnter={(e) => {
+        if (isDragPayload(e)) setDropTarget('')
+      }}
       onDragOver={(e) => handleDragOver(e, null)}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTarget(null)
       }}
       onDrop={(e) => handleDrop(e, null)}
     >
+      {/* Drop-zone hint while dragging over the tree background (workspace root) */}
+      {dragPath && dropTarget === '' && (
+        <div className="mx-1 mb-1 flex items-center gap-1.5 rounded-[6px] border border-dashed border-accent/70 bg-accent/10 px-2 py-1 text-[11.5px] font-medium text-accent">
+          <Folder className="w-3.5 h-3.5" />
+          Move to workspace root
+        </div>
+      )}
       {tree.map((node) => renderNode(node, 0))}
       {menu && (
         <div
