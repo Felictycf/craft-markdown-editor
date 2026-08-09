@@ -58,13 +58,12 @@ export function GlobalSearch({
   const total = results?.reduce((n, r) => n + r.matches.length, 0) ?? 0
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[var(--z-modal)]">
-      <div className="absolute inset-0 bg-black/20" onMouseDown={onClose} />
-      <div
-        className="relative mx-auto mt-16 w-[640px] max-w-[90vw] rounded-xl bg-popover text-popover-foreground shadow-modal-small border border-border overflow-hidden"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+    <>
+      {/* Full-viewport backdrop — click anywhere outside the panel to close */}
+      <div className="fixed inset-0 z-[var(--z-modal)] bg-black/20" onMouseDown={onClose} />
+      <div className="fixed inset-x-0 top-0 z-[var(--z-modal)]">
+        <div className="relative mx-auto mt-16 w-[640px] max-w-[90vw] rounded-xl bg-popover text-popover-foreground shadow-modal-small border border-border overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
           <Search className="w-4 h-4 text-foreground/40 shrink-0" />
           <input
             ref={inputRef}
@@ -124,7 +123,8 @@ export function GlobalSearch({
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
