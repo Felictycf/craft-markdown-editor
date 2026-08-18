@@ -32,27 +32,35 @@
   margin-top: 0;
 }
 
-/* Headings */
+/* Headings — mainline sizes (h1 ≈ 2.1em of body) */
 .tiptap-editor .tiptap-prose h1 {
-  font-size: 1.25rem;
+  font-size: 2.1rem;
   font-weight: 700;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.2;
+}
+
+.tiptap-editor .tiptap-prose h2 {
+  font-size: 1.55rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.6rem;
+  line-height: 1.25;
+}
+
+.tiptap-editor .tiptap-prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
   margin-top: 1.25rem;
   margin-bottom: 0.5rem;
   line-height: 1.3;
 }
 
-.tiptap-editor .tiptap-prose h2 {
-  font-size: 1.125rem;
+.tiptap-editor .tiptap-prose h4 {
+  font-size: 1.05rem;
   font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-  line-height: 1.3;
-}
-
-.tiptap-editor .tiptap-prose h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-top: 1rem;
+  margin-top: 1.1rem;
   margin-bottom: 0.5rem;
   line-height: 1.3;
 }
